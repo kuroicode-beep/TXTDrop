@@ -4,7 +4,7 @@ import sqlite3
 import datetime
 import threading
 import tkinter as tk
-from tkinter import filedialog
+from tkinter import filedialog, messagebox
 
 import keyboard
 import pyperclip
@@ -79,6 +79,38 @@ def pick_folder(title="Select Save Folder"):
     folder = filedialog.askdirectory(title=title, parent=root)
     root.destroy()
     return folder or None
+
+
+def backup_db():
+    folder = pick_folder("TXTDrop — Select Backup Destination")
+    if not folder:
+        return
+
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    dest = os.path.join(folder, f"txtdrop_backup_{ts}.db")
+
+    try:
+        # Use SQLite online backup API to ensure a consistent snapshot
+        src = db_connect()
+        dst = sqlite3.connect(dest)
+        with dst:
+            src.backup(dst)
+        dst.close()
+        src.close()
+        _notify(f"Backup saved:\n{dest}")
+    except Exception as e:
+        _notify(f"Backup failed:\n{e}", error=True)
+
+
+def _notify(message, error=False):
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+    if error:
+        messagebox.showerror("TXTDrop", message, parent=root)
+    else:
+        messagebox.showinfo("TXTDrop", message, parent=root)
+    root.destroy()
 
 
 def make_tray_icon():
@@ -156,6 +188,9 @@ def main():
                 config_set("save_folder", folder)
         threading.Thread(target=do, daemon=True).start()
 
+    def on_backup_db(icon, item):
+        threading.Thread(target=backup_db, daemon=True).start()
+
     def on_exit(icon, item):
         keyboard.unhook_all()
         icon.stop()
@@ -166,6 +201,7 @@ def main():
         title="TXTDrop",
         menu=pystray.Menu(
             pystray.MenuItem("Change Folder", on_change_folder),
+            pystray.MenuItem("Backup Database", on_backup_db),
             pystray.MenuItem("Exit", on_exit),
         ),
     )
