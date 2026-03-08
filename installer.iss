@@ -4,6 +4,7 @@ AppVersion=1.0
 AppPublisher=TXTDrop
 DefaultDirName={autopf}\TXTDrop
 DefaultGroupName=TXTDrop
+OutputDir=Output
 OutputBaseFilename=TXTDropSetup
 SetupIconFile=icon.ico
 Compression=lzma
