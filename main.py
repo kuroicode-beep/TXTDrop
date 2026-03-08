@@ -102,6 +102,46 @@ def backup_db():
         _notify(f"Backup failed:\n{e}", error=True)
 
 
+def restore_db():
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+    src_path = filedialog.askopenfilename(
+        title="TXTDrop — Select Backup File to Restore",
+        filetypes=[("TXTDrop Database", "*.db"), ("All files", "*.*")],
+        parent=root,
+    )
+    root.destroy()
+
+    if not src_path:
+        return
+
+    # Confirm before overwriting
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+    confirmed = messagebox.askyesno(
+        "TXTDrop — Restore",
+        f"Restore database from:\n{src_path}\n\nCurrent data will be overwritten. Continue?",
+        parent=root,
+    )
+    root.destroy()
+
+    if not confirmed:
+        return
+
+    try:
+        src = sqlite3.connect(src_path)
+        dst = db_connect()
+        with dst:
+            src.backup(dst)
+        src.close()
+        dst.close()
+        _notify("Restore complete.\nRestart TXTDrop to apply changes.")
+    except Exception as e:
+        _notify(f"Restore failed:\n{e}", error=True)
+
+
 def _notify(message, error=False):
     root = tk.Tk()
     root.withdraw()
@@ -191,6 +231,9 @@ def main():
     def on_backup_db(icon, item):
         threading.Thread(target=backup_db, daemon=True).start()
 
+    def on_restore_db(icon, item):
+        threading.Thread(target=restore_db, daemon=True).start()
+
     def on_exit(icon, item):
         keyboard.unhook_all()
         icon.stop()
@@ -202,6 +245,7 @@ def main():
         menu=pystray.Menu(
             pystray.MenuItem("Change Folder", on_change_folder),
             pystray.MenuItem("Backup Database", on_backup_db),
+            pystray.MenuItem("Restore Database", on_restore_db),
             pystray.MenuItem("Exit", on_exit),
         ),
     )
