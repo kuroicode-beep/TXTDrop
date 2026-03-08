@@ -3,6 +3,8 @@ import sys
 import sqlite3
 import datetime
 import threading
+import subprocess
+import urllib.request
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
@@ -167,6 +169,41 @@ def make_tray_icon():
 
 
 # ------------------------------------------------------------------
+# Ollama
+# ------------------------------------------------------------------
+
+def ollama_is_running():
+    try:
+        urllib.request.urlopen("http://localhost:11434", timeout=2)
+        return True
+    except Exception:
+        return False
+
+
+def ollama_check_and_prompt():
+    if ollama_is_running():
+        return
+
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+    confirmed = messagebox.askyesno(
+        "TXTDrop — Ollama",
+        "Ollama 서버가 실행되지 않았습니다.\n\n실행할까요?",
+        parent=root,
+    )
+    root.destroy()
+
+    if confirmed:
+        subprocess.Popen(
+            ["ollama", "serve"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+
+
+# ------------------------------------------------------------------
 # Clipboard
 # ------------------------------------------------------------------
 
@@ -205,6 +242,7 @@ def drop_clipboard(save_folder):
 
 def main():
     db_init()
+    threading.Thread(target=ollama_check_and_prompt, daemon=True).start()
 
     save_folder = config_get("save_folder")
     if not save_folder or not os.path.isdir(save_folder):
