@@ -1,6 +1,6 @@
 import os
 import sys
-import json
+import sqlite3
 import datetime
 import threading
 import tkinter as tk
@@ -16,26 +16,61 @@ if getattr(sys, "frozen", False):
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
+DB_FILE = os.path.join(BASE_DIR, "txtdrop.db")
 
 
-def load_config():
-    if os.path.exists(CONFIG_FILE):
-        try:
-            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return {}
+# ------------------------------------------------------------------
+# Database
+# ------------------------------------------------------------------
+
+def db_connect():
+    return sqlite3.connect(DB_FILE)
 
 
-def save_config(config):
-    try:
-        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(config, f, indent=2)
-    except Exception:
-        pass
+def db_init():
+    with db_connect() as conn:
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS config (
+                key   TEXT PRIMARY KEY,
+                value TEXT
+            );
+            CREATE TABLE IF NOT EXISTS history (
+                id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                saved_at  TEXT NOT NULL,
+                type      TEXT NOT NULL,
+                filename  TEXT NOT NULL,
+                filepath  TEXT NOT NULL
+            );
+        """)
 
+
+def config_get(key):
+    with db_connect() as conn:
+        row = conn.execute(
+            "SELECT value FROM config WHERE key = ?", (key,)
+        ).fetchone()
+    return row[0] if row else None
+
+
+def config_set(key, value):
+    with db_connect() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
+            (key, value),
+        )
+
+
+def history_add(type_, filename, filepath):
+    with db_connect() as conn:
+        conn.execute(
+            "INSERT INTO history (saved_at, type, filename, filepath) VALUES (?, ?, ?, ?)",
+            (datetime.datetime.now().isoformat(), type_, filename, filepath),
+        )
+
+
+# ------------------------------------------------------------------
+# UI helpers
+# ------------------------------------------------------------------
 
 def pick_folder(title="Select Save Folder"):
     root = tk.Tk()
@@ -46,6 +81,23 @@ def pick_folder(title="Select Save Folder"):
     return folder or None
 
 
+def make_tray_icon():
+    size = 64
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    try:
+        d.rounded_rectangle([4, 4, 60, 60], radius=10, fill=(41, 128, 185))
+    except AttributeError:
+        d.rectangle([4, 4, 60, 60], fill=(41, 128, 185))
+    d.rectangle([16, 16, 48, 23], fill="white")  # top bar
+    d.rectangle([28, 16, 36, 50], fill="white")  # stem
+    return img
+
+
+# ------------------------------------------------------------------
+# Clipboard
+# ------------------------------------------------------------------
+
 def timestamp():
     return datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -55,8 +107,10 @@ def drop_clipboard(save_folder):
     try:
         img = ImageGrab.grabclipboard()
         if isinstance(img, Image.Image):
-            path = os.path.join(save_folder, f"txtdrop_{timestamp()}.png")
-            img.save(path, "PNG")
+            filename = f"txtdrop_{timestamp()}.png"
+            filepath = os.path.join(save_folder, filename)
+            img.save(filepath, "PNG")
+            history_add("image", filename, filepath)
             return
     except Exception:
         pass
@@ -64,38 +118,30 @@ def drop_clipboard(save_folder):
     try:
         text = pyperclip.paste()
         if text and text.strip():
-            path = os.path.join(save_folder, f"txtdrop_{timestamp()}.txt")
-            with open(path, "w", encoding="utf-8") as f:
+            filename = f"txtdrop_{timestamp()}.txt"
+            filepath = os.path.join(save_folder, filename)
+            with open(filepath, "w", encoding="utf-8") as f:
                 f.write(text)
+            history_add("text", filename, filepath)
     except Exception:
         pass
 
 
-def make_tray_icon():
-    size = 64
-    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    try:
-        d.rounded_rectangle([4, 4, 60, 60], radius=10, fill=(41, 128, 185))
-    except AttributeError:
-        d.rectangle([4, 4, 60, 60], fill=(41, 128, 185))
-    # White "T"
-    d.rectangle([16, 16, 48, 23], fill="white")  # top bar
-    d.rectangle([28, 16, 36, 50], fill="white")  # stem
-    return img
-
+# ------------------------------------------------------------------
+# Main
+# ------------------------------------------------------------------
 
 def main():
-    config = load_config()
+    db_init()
 
-    if not config.get("save_folder") or not os.path.isdir(config["save_folder"]):
-        folder = pick_folder("TXTDrop — Select Save Folder")
-        if not folder:
+    save_folder = config_get("save_folder")
+    if not save_folder or not os.path.isdir(save_folder):
+        save_folder = pick_folder("TXTDrop — Select Save Folder")
+        if not save_folder:
             return
-        config["save_folder"] = folder
-        save_config(config)
+        config_set("save_folder", save_folder)
 
-    state = {"save_folder": config["save_folder"]}
+    state = {"save_folder": save_folder}
 
     def on_hotkey():
         drop_clipboard(state["save_folder"])
@@ -107,8 +153,7 @@ def main():
             folder = pick_folder("TXTDrop — Change Save Folder")
             if folder:
                 state["save_folder"] = folder
-                config["save_folder"] = folder
-                save_config(config)
+                config_set("save_folder", folder)
         threading.Thread(target=do, daemon=True).start()
 
     def on_exit(icon, item):
