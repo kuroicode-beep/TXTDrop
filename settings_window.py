@@ -40,6 +40,8 @@ def open_settings(on_save=None):
 
 
 def _raise_win():
+    """Raise existing window, or re-create if it was already destroyed."""
+    import tk_root as tkr
     w = _win_ref[0]
     if w:
         try:
@@ -48,6 +50,7 @@ def _raise_win():
         except tk.TclError:
             with _win_lock:
                 _win_ref[0] = None
+            tkr.call_on_main(lambda: _run(tkr.get(), None))  # re-open
 
 
 # ── Private (Tk-thread only) ──────────────────────────────────────────────────
