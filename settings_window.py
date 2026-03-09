@@ -75,8 +75,20 @@ def _run(on_save):
     _input_row(body, t("lbl_hotkey"), v_hotkey, width=22)
 
     # ── Section: AI ───────────────────────────────────────────────────────────
-    _section(body, t("sec_ai"))
+    # Section header with inline server status
+    ai_hdr = tk.Frame(body, bg=_BG)
+    ai_hdr.pack(fill="x", pady=(12, 2))
 
+    tk.Label(ai_hdr, text=t("sec_ai"), bg=_BG, fg=_ACCENT,
+             font=("Malgun Gothic", 10, "bold")).pack(side="left")
+
+    srv_lbl = tk.Label(ai_hdr, text="  ● 확인 중…", bg=_BG, fg=_DIM,
+                       font=("Malgun Gothic", 9))
+    srv_lbl.pack(side="left", padx=(8, 0))
+
+    tk.Frame(body, bg=_BORDER, height=1).pack(fill="x", pady=(2, 4))
+
+    # Model row: label + combobox + model status
     ai_row = tk.Frame(body, bg=_BG)
     ai_row.pack(fill="x", pady=3)
     tk.Label(ai_row, text=t("lbl_model"), bg=_BG, fg=_FG,
@@ -84,8 +96,53 @@ def _run(on_save):
 
     models = ollama_client.list_models()
     cb = ttk.Combobox(ai_row, textvariable=v_model,
-                      values=models, state="readonly", width=24)
+                      values=models, state="readonly", width=22)
     cb.pack(side="left")
+
+    model_lbl = tk.Label(ai_row, text="", bg=_BG,
+                         font=("Malgun Gothic", 9))
+    model_lbl.pack(side="left", padx=(8, 0))
+
+    # ── Status check logic ────────────────────────────────────────────────────
+    _cached_models: list[str] = list(models)
+
+    def _update_model_status(*_):
+        selected = v_model.get()
+        resolved = ollama_client.resolve_model(selected)
+        if resolved in _cached_models:
+            model_lbl.config(text="✓ 정상작동", fg="#81c995")
+        elif _cached_models:
+            model_lbl.config(text=f"→ {resolved} 사용", fg=_ACCENT)
+        else:
+            model_lbl.config(text="모델 없음", fg="#f28b82")
+
+    def _check_ollama_status():
+        running = ollama_client.is_running()
+        available = ollama_client.list_models()
+        _cached_models.clear()
+        _cached_models.extend(available)
+
+        def _apply():
+            if running:
+                srv_lbl.config(text="  ● 실행 중", fg="#81c995")
+                cb.config(values=available)
+                # Auto-select resolved model if current value is invalid
+                cur = v_model.get()
+                resolved = ollama_client.resolve_model(cur)
+                if cur not in available and resolved in available:
+                    v_model.set(resolved)
+            else:
+                srv_lbl.config(text="  ● 오프라인", fg="#f28b82")
+
+            _update_model_status()
+
+        win.after(0, _apply)
+
+    # Start async status check
+    threading.Thread(target=_check_ollama_status, daemon=True).start()
+
+    # Update model status when selection changes
+    v_model.trace_add("write", _update_model_status)
 
     _check(body, t("chk_autostart"), v_autostart)
 
