@@ -1,5 +1,4 @@
 import os
-import sys
 import time
 import ctypes
 import datetime
@@ -330,7 +329,7 @@ def main():
         time.sleep(0.15)  # allow SQLite commit before exit
         if tray_ref[0]:
             tray_ref[0].stop()
-        sys.exit(0)  # force-terminate all threads (keyboard lib keeps non-daemon threads)
+        os._exit(0)  # OS-level kill: bypasses Tkinter exception swallowing, kills all threads
 
     # pystray native-menu callbacks (keep for fallback / accessibility)
     def on_settings(icon, item): _do_settings()
