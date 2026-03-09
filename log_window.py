@@ -45,6 +45,8 @@ def open_log():
 # ── Private (Tk-thread only) ──────────────────────────────────────────────────
 
 def _raise_win():
+    """Raise existing window, or re-create if it was already destroyed."""
+    import tk_root as tkr
     w = _singleton_win[0]
     if w:
         try:
@@ -53,6 +55,7 @@ def _raise_win():
         except tk.TclError:
             with _singleton_lock:
                 _singleton_win[0] = None
+            tkr.call_on_main(_create)   # window was destroyed — re-open
 
 
 def _create():
