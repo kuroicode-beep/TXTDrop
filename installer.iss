@@ -15,6 +15,8 @@ WizardImageStretch=no
 Compression=lzma
 SolidCompression=yes
 PrivilegesRequired=lowest
+CloseApplications=yes
+RestartApplications=no
 
 [Languages]
 Name: "korean";  MessagesFile: "compiler:Languages\Korean.isl"
