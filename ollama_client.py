@@ -28,11 +28,45 @@ def list_models() -> list[str]:
         return _FALLBACK_MODELS
 
 
+def resolve_model(model: str) -> str:
+    """
+    Resolve configured model name against actually installed models.
+
+    Priority:
+      1. Exact match           ("llama3.2:3b"    → "llama3.2:3b")
+      2. Add :latest suffix    ("llama3"         → "llama3:latest")
+      3. Name prefix match     ("llama3"         → "llama3.2:3b")
+      4. First available model (ultimate fallback)
+    """
+    available = list_models()
+    if not available or available == _FALLBACK_MODELS:
+        return model
+
+    # 1. Exact
+    if model in available:
+        return model
+
+    # 2. :latest
+    with_latest = f"{model}:latest"
+    if with_latest in available:
+        return with_latest
+
+    # 3. Prefix — pick shortest match (most specific)
+    prefix_matches = [m for m in available if m.startswith(model)]
+    if prefix_matches:
+        return sorted(prefix_matches, key=len)[0]
+
+    # 4. First available
+    return available[0]
+
+
 def generate_title(text: str, model: str) -> str | None:
     """
     Ask Ollama to produce a short, file-safe title for *text*.
     Returns a sanitized string, or None on any failure.
     """
+    resolved = resolve_model(model)
+
     prompt = (
         "다음 텍스트의 핵심을 3~5단어로 요약한 파일명용 짧은 제목을 만들어줘. "
         "한글, 영어, 숫자, 하이픈(-)만 사용하고 다른 특수문자는 쓰지 마. "
@@ -40,7 +74,7 @@ def generate_title(text: str, model: str) -> str | None:
         + text[:800]
     )
     payload = json.dumps({
-        "model":  model,
+        "model":  resolved,
         "prompt": prompt,
         "stream": False,
     }).encode()
@@ -52,8 +86,13 @@ def generate_title(text: str, model: str) -> str | None:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=20) as r:
+        with urllib.request.urlopen(req, timeout=30) as r:
             result = json.loads(r.read())
+
+            # Ollama returns {"error": "..."} on model-not-found etc.
+            if "error" in result:
+                return None
+
             raw = result.get("response", "").strip()
             return _sanitize(raw) or None
     except Exception:

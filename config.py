@@ -17,7 +17,7 @@ DEFAULTS = {
     "sound_enabled":     "true",
     "hotkey":            "ctrl+shift+z",
     "language":          "ko",
-    "ollama_model":      "llama3",
+    "ollama_model":      "llama3.2",
     "ollama_autostart":  "true",
 }
 
