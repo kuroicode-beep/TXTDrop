@@ -4,12 +4,14 @@ notify.py — corner toast notifications for TXTDrop.
 Uses the shared hidden tk.Tk root (tk_root module) so every toast is a
 tk.Toplevel — no separate Tk() per thread, no message-queue collisions.
 
-Toasts stack upward from the bottom-right corner and reposition when one
-is dismissed.
+Toasts stack upward from the bottom-right corner of the work area
+(above the taskbar) and reposition when one is dismissed.
 
 All functions that touch Tk widgets run on the Tk event-loop thread via
 tk_root.call_on_main().
 """
+import ctypes
+import ctypes.wintypes
 import threading
 import tkinter as tk
 
@@ -18,9 +20,29 @@ _FG    = "#f0f0f0"
 _DIM   = "#888888"
 _GREEN = "#81c995"
 _RED   = "#f28b82"
+_BLUE  = "#82b4f5"
 
 # Accessed exclusively from the Tk thread — no locking required.
-_active: list[dict] = []   # {"win", "h", "x", "sh"}
+_active: list[dict] = []   # {"win", "h", "x", "wa_bottom"}
+
+# Cache work-area so we don't call the API on every toast
+_work_area: tuple[int, int, int, int] | None = None   # (left, top, right, bottom)
+
+
+def _get_work_area() -> tuple[int, int, int, int]:
+    """Return (left, top, right, bottom) of the primary monitor work area."""
+    global _work_area
+    if _work_area is None:
+        class RECT(ctypes.Structure):
+            _fields_ = [("left",   ctypes.c_long),
+                        ("top",    ctypes.c_long),
+                        ("right",  ctypes.c_long),
+                        ("bottom", ctypes.c_long)]
+        r = RECT()
+        # SPI_GETWORKAREA = 0x0030
+        ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(r), 0)
+        _work_area = (r.left, r.top, r.right, r.bottom)
+    return _work_area
 
 
 def show_toast(title: str, body: str, on_click=None, level: str = "info"):
@@ -36,9 +58,16 @@ def _create(title: str, body: str, on_click, level: str):
     import tk_root as tkr
 
     root   = tkr.get()
-    accent = _RED if level == "error" else _GREEN
+    if level == "error":
+        accent = _RED
+    elif level == "info":
+        accent = _BLUE
+    else:
+        accent = _GREEN
 
+    # Build window hidden first, position after size is known
     win = tk.Toplevel(root)
+    win.withdraw()
     win.overrideredirect(True)
     win.attributes("-topmost", True)
     win.configure(bg=accent)
@@ -61,25 +90,28 @@ def _create(title: str, body: str, on_click, level: str):
         tk.Label(inner, text=t("toast_hint"), bg=_BG, fg=_DIM,
                  font=("Malgun Gothic", 8)).pack(anchor="w", pady=(4, 0))
 
+    # Measure size BEFORE showing
     win.update_idletasks()
-    w  = max(win.winfo_reqwidth(), 300)
-    h  = win.winfo_reqheight()
-    sw = root.winfo_screenwidth()
-    sh = root.winfo_screenheight()
+    w = max(win.winfo_reqwidth(), 300)
+    h = max(win.winfo_reqheight(), 80)
 
+    # Use Windows work area so we never overlap the taskbar
+    wa_left, _wa_top, wa_right, wa_bottom = _get_work_area()
     y_offset = sum(s["h"] + 8 for s in _active)
-    x = sw - w - 20
-    y = sh - h - 52 - y_offset
-    win.geometry(f"{w}x{h}+{x}+{y}")
+    x = wa_right - w - 12
+    y = wa_bottom - h - 8 - y_offset
 
-    slot = {"win": win, "h": h, "x": x, "sh": sh}
+    win.geometry(f"{w}x{h}+{x}+{y}")
+    win.deiconify()   # show at correct position
+
+    slot = {"win": win, "h": h, "x": x, "wa_bottom": wa_bottom}
     _active.append(slot)
 
-    clicked    = [False]
-    _after_id  = [None]   # holds the scheduled auto-dismiss id
+    clicked   = [False]
+    _after_id = [None]
 
     def dismiss(evt=None):
-        if slot not in _active:  # already dismissed — prevent double-run
+        if slot not in _active:   # already dismissed — prevent double-run
             return
         if _after_id[0]:
             win.after_cancel(_after_id[0])
@@ -98,7 +130,7 @@ def _create(title: str, body: str, on_click, level: str):
         dismiss()
 
     _bind_recursive(win, on_click_evt)
-    _after_id[0] = win.after(4000, dismiss)
+    _after_id[0] = win.after(5000, dismiss)   # 5 s display time
 
 
 def _restack():
@@ -106,10 +138,10 @@ def _restack():
     y_offset = 0
     for slot in reversed(_active):
         try:
-            h  = slot["h"]
-            x  = slot["x"]
-            sh = slot["sh"]
-            y  = sh - h - 52 - y_offset
+            h         = slot["h"]
+            x         = slot["x"]
+            wa_bottom = slot["wa_bottom"]
+            y = wa_bottom - h - 8 - y_offset
             slot["win"].geometry(f"+{x}+{y}")
             y_offset += h + 8
         except tk.TclError:
