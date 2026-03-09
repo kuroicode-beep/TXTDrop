@@ -1,6 +1,5 @@
 import os
 import sys
-import sqlite3
 import datetime
 import threading
 import subprocess
@@ -15,6 +14,8 @@ import pystray
 import config
 import ollama_client
 import sound
+import notify
+import log_window
 import settings_window
 from i18n import t
 
@@ -55,7 +56,7 @@ def _image_folder() -> str | None:
     f = config.get("image_save_folder")
     if f and os.path.isdir(f):
         return f
-    return _text_folder()   # fallback
+    return _text_folder()
 
 
 # ── Clipboard save ────────────────────────────────────────────────────────────
@@ -67,113 +68,72 @@ def drop_clipboard():
         if isinstance(img, Image.Image):
             folder = _image_folder()
             if not folder:
+                msg = t("save_fail_folder")
+                config.log_add("WARN", "save", f"[image] {msg}")
+                notify.show_toast(t("toast_fail"), msg,
+                                  on_click=log_window.open_log, level="error")
                 return
             filename = _image_filename()
             filepath = os.path.join(folder, filename)
             img.save(filepath, "PNG")
             config.history_add("image", filename, filepath)
+            config.log_add("INFO", "save", f"[image] {filename}")
             if config.get_bool("sound_enabled"):
                 sound.play_drop()
+            notify.show_toast(t("toast_ok"), filename,
+                              on_click=log_window.open_log)
             return
-    except Exception:
-        pass
+    except Exception as e:
+        msg = f"[image] {e}"
+        config.log_add("ERROR", "save", msg)
+        notify.show_toast(t("toast_fail"), str(e),
+                          on_click=log_window.open_log, level="error")
+        return
 
     # ── Text ─────────────────────────────────────────────────────────────────
     try:
         text = pyperclip.paste()
-        if text and text.strip():
-            folder = _text_folder()
-            if not folder:
-                return
-            filename = _text_filename(text)
-            filepath = os.path.join(folder, filename)
-            with open(filepath, "w", encoding="utf-8") as f:
-                f.write(text)
-            config.history_add("text", filename, filepath)
-            if config.get_bool("sound_enabled"):
-                sound.play_drop()
-    except Exception:
-        pass
-
-
-# ── DB helpers ────────────────────────────────────────────────────────────────
-
-def _backup_db():
-    root = tk.Tk()
-    root.withdraw()
-    root.attributes("-topmost", True)
-    folder = filedialog.askdirectory(
-        title="TXTDrop — Select Backup Destination", parent=root
-    )
-    root.destroy()
-    if not folder:
-        return
-
-    ts   = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    dest = os.path.join(folder, f"txtdrop_backup_{ts}.db")
-    try:
-        src = sqlite3.connect(config.DB_FILE)
-        dst = sqlite3.connect(dest)
-        with dst:
-            src.backup(dst)
-        dst.close()
-        src.close()
-        _notify(t("backup_success", path=dest))
+        if not text or not text.strip():
+            config.log_add("WARN", "save", t("save_fail_empty"))
+            return
+        folder = _text_folder()
+        if not folder:
+            msg = t("save_fail_folder")
+            config.log_add("WARN", "save", f"[text] {msg}")
+            notify.show_toast(t("toast_fail"), msg,
+                              on_click=log_window.open_log, level="error")
+            return
+        filename = _text_filename(text)
+        filepath = os.path.join(folder, filename)
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(text)
+        config.history_add("text", filename, filepath)
+        config.log_add("INFO", "save", f"[text] {filename}")
+        if config.get_bool("sound_enabled"):
+            sound.play_drop()
+        notify.show_toast(t("toast_ok"), filename,
+                          on_click=log_window.open_log)
     except Exception as e:
-        _notify(t("backup_fail", err=e), error=True)
-
-
-def _restore_db():
-    root = tk.Tk()
-    root.withdraw()
-    root.attributes("-topmost", True)
-    src_path = filedialog.askopenfilename(
-        title="TXTDrop — Select Backup File",
-        filetypes=[("TXTDrop Database", "*.db"), ("All files", "*.*")],
-        parent=root,
-    )
-    root.destroy()
-    if not src_path:
-        return
-
-    root = tk.Tk()
-    root.withdraw()
-    root.attributes("-topmost", True)
-    ok = messagebox.askyesno("TXTDrop", t("restore_confirm"), parent=root)
-    root.destroy()
-    if not ok:
-        return
-
-    try:
-        src = sqlite3.connect(src_path)
-        dst = sqlite3.connect(config.DB_FILE)
-        with dst:
-            src.backup(dst)
-        src.close()
-        dst.close()
-        _notify(t("restore_success"))
-    except Exception as e:
-        _notify(t("restore_fail", err=e), error=True)
-
-
-def _notify(message: str, error: bool = False):
-    root = tk.Tk()
-    root.withdraw()
-    root.attributes("-topmost", True)
-    if error:
-        messagebox.showerror("TXTDrop", message, parent=root)
-    else:
-        messagebox.showinfo("TXTDrop", message, parent=root)
-    root.destroy()
+        msg = f"[text] {e}"
+        config.log_add("ERROR", "save", msg)
+        notify.show_toast(t("toast_fail"), str(e),
+                          on_click=log_window.open_log, level="error")
 
 
 # ── Ollama autostart check ────────────────────────────────────────────────────
 
 def _ollama_check():
+    config.log_add("INFO", "ollama", "서버 상태 확인 중…")
     if not config.get_bool("ollama_autostart"):
+        config.log_add("INFO", "ollama", "자동 시작 비활성화 — 건너뜀")
         return
     if ollama_client.is_running():
+        models = ollama_client.list_models()
+        config.log_add("INFO", "ollama",
+                       f"서버 실행 중 — 모델 {len(models)}개: {', '.join(models[:3])}")
         return
+
+    config.log_add("WARN", "ollama", "서버 미실행 — 사용자에게 확인 요청")
 
     root = tk.Tk()
     root.withdraw()
@@ -188,6 +148,9 @@ def _ollama_check():
             stderr=subprocess.DEVNULL,
             creationflags=subprocess.CREATE_NO_WINDOW,
         )
+        config.log_add("INFO", "ollama", "ollama serve 백그라운드 시작됨")
+    else:
+        config.log_add("INFO", "ollama", "사용자가 Ollama 시작 취소")
 
 
 # ── First run ─────────────────────────────────────────────────────────────────
@@ -210,6 +173,7 @@ def _first_run() -> bool:
 
     config.set("text_save_folder",  folder)
     config.set("image_save_folder", folder)
+    config.log_add("INFO", "startup", f"첫 실행 — 저장 폴더 설정: {folder}")
     return True
 
 
@@ -232,10 +196,12 @@ def _make_icon() -> Image.Image:
 
 def main():
     config.init_db()
+    config.log_add("INFO", "startup", "TXTDrop 시작됨")
 
     # First-run folder setup
     if not config.get("text_save_folder"):
         if not _first_run():
+            config.log_add("WARN", "startup", "첫 실행 폴더 선택 취소 — 종료")
             return
 
     # Ollama check in background
@@ -247,6 +213,8 @@ def main():
         hotkey_state["current"],
         lambda: threading.Thread(target=drop_clipboard, daemon=True).start(),
     )
+    config.log_add("INFO", "startup",
+                   f"단축키 등록: {hotkey_state['current']}")
 
     # ── Tray callbacks ────────────────────────────────────────────────────────
 
@@ -262,16 +230,16 @@ def main():
                     new_hk,
                     lambda: threading.Thread(target=drop_clipboard, daemon=True).start(),
                 )
+                config.log_add("INFO", "startup",
+                               f"단축키 변경: {hotkey_state['current']} → {new_hk}")
                 hotkey_state["current"] = new_hk
         settings_window.open_settings(on_save=on_save)
 
-    def on_backup(icon, item):
-        threading.Thread(target=_backup_db, daemon=True).start()
-
-    def on_restore(icon, item):
-        threading.Thread(target=_restore_db, daemon=True).start()
+    def on_log(icon, item):
+        log_window.open_log()
 
     def on_exit(icon, item):
+        config.log_add("INFO", "startup", "TXTDrop 종료됨")
         keyboard.unhook_all()
         icon.stop()
 
@@ -280,10 +248,9 @@ def main():
         icon=_make_icon(),
         title="TXTDrop",
         menu=pystray.Menu(
-            pystray.MenuItem(lambda item: t("settings"), on_settings),
-            pystray.MenuItem(lambda item: t("backup_db"), on_backup),
-            pystray.MenuItem(lambda item: t("restore_db"), on_restore),
-            pystray.MenuItem(lambda item: t("exit"), on_exit),
+            pystray.MenuItem(lambda item: t("settings"),    on_settings),
+            pystray.MenuItem(lambda item: t("log_history"), on_log),
+            pystray.MenuItem(lambda item: t("exit"),        on_exit),
         ),
     )
     tray.run()

@@ -45,8 +45,8 @@ def _run(on_save):
     v_sound        = tk.BooleanVar(value=config.get_bool("sound_enabled"))
     v_lang         = tk.StringVar(value=config.get("language") or "ko")
 
-    # ── Main frame ────────────────────────────────────────────────────────────
-    outer = tk.Frame(win, bg=_BG, padx=0, pady=0)
+    # ── Scrollable canvas ─────────────────────────────────────────────────────
+    outer = tk.Frame(win, bg=_BG)
     outer.pack(fill="both", expand=True)
 
     # Header
@@ -72,10 +72,9 @@ def _run(on_save):
 
     # ── Section: 단축키 ───────────────────────────────────────────────────────
     _section(body, t("sec_hotkey"))
-    _input_row(body, t("lbl_hotkey"), v_hotkey, width=22)
+    _hotkey_row(body, t("lbl_hotkey"), v_hotkey, win)
 
     # ── Section: AI ───────────────────────────────────────────────────────────
-    # Section header with inline server status
     ai_hdr = tk.Frame(body, bg=_BG)
     ai_hdr.pack(fill="x", pady=(12, 2))
 
@@ -88,7 +87,6 @@ def _run(on_save):
 
     tk.Frame(body, bg=_BORDER, height=1).pack(fill="x", pady=(2, 4))
 
-    # Model row: label + combobox + model status
     ai_row = tk.Frame(body, bg=_BG)
     ai_row.pack(fill="x", pady=3)
     tk.Label(ai_row, text=t("lbl_model"), bg=_BG, fg=_FG,
@@ -99,11 +97,9 @@ def _run(on_save):
                       values=models, state="readonly", width=22)
     cb.pack(side="left")
 
-    model_lbl = tk.Label(ai_row, text="", bg=_BG,
-                         font=("Malgun Gothic", 9))
+    model_lbl = tk.Label(ai_row, text="", bg=_BG, font=("Malgun Gothic", 9))
     model_lbl.pack(side="left", padx=(8, 0))
 
-    # ── Status check logic ────────────────────────────────────────────────────
     _cached_models: list[str] = list(models)
 
     def _update_model_status(*_):
@@ -117,7 +113,7 @@ def _run(on_save):
             model_lbl.config(text="모델 없음", fg="#f28b82")
 
     def _check_ollama_status():
-        running = ollama_client.is_running()
+        running   = ollama_client.is_running()
         available = ollama_client.list_models()
         _cached_models.clear()
         _cached_models.extend(available)
@@ -126,22 +122,17 @@ def _run(on_save):
             if running:
                 srv_lbl.config(text="  ● 실행 중", fg="#81c995")
                 cb.config(values=available)
-                # Auto-select resolved model if current value is invalid
-                cur = v_model.get()
+                cur      = v_model.get()
                 resolved = ollama_client.resolve_model(cur)
                 if cur not in available and resolved in available:
                     v_model.set(resolved)
             else:
                 srv_lbl.config(text="  ● 오프라인", fg="#f28b82")
-
             _update_model_status()
 
         win.after(0, _apply)
 
-    # Start async status check
     threading.Thread(target=_check_ollama_status, daemon=True).start()
-
-    # Update model status when selection changes
     v_model.trace_add("write", _update_model_status)
 
     _check(body, t("chk_autostart"), v_autostart)
@@ -161,6 +152,48 @@ def _run(on_save):
             activebackground=_BG, activeforeground=_FG,
             font=("Malgun Gothic", 10),
         ).pack(side="left", padx=(0, 18))
+
+    # ── Section: 데이터베이스 ─────────────────────────────────────────────────
+    _section(body, t("sec_database"))
+    db_row = tk.Frame(body, bg=_BG)
+    db_row.pack(fill="x", pady=6)
+
+    def do_backup():
+        folder = filedialog.askdirectory(title=t("select_folder"), parent=win)
+        if not folder:
+            return
+        try:
+            path = config.backup_db(folder)
+            messagebox.showinfo("TXTDrop", t("backup_success", path=path), parent=win)
+        except Exception as e:
+            messagebox.showerror("TXTDrop", t("backup_fail", err=e), parent=win)
+
+    def do_restore():
+        src = filedialog.askopenfilename(
+            title="TXTDrop — " + t("btn_restore"),
+            filetypes=[("TXTDrop Database", "*.db"), ("All files", "*.*")],
+            parent=win,
+        )
+        if not src:
+            return
+        ok = messagebox.askyesno("TXTDrop", t("restore_confirm"), parent=win)
+        if not ok:
+            return
+        try:
+            config.restore_db(src)
+            messagebox.showinfo("TXTDrop", t("restore_success"), parent=win)
+        except Exception as e:
+            messagebox.showerror("TXTDrop", t("restore_fail", err=e), parent=win)
+
+    tk.Button(db_row, text=t("btn_backup"), command=do_backup,
+              bg=_BG3, fg=_FG, font=("Malgun Gothic", 10),
+              relief="flat", bd=0, padx=16, pady=6,
+              cursor="hand2").pack(side="left", padx=(0, 8))
+
+    tk.Button(db_row, text=t("btn_restore"), command=do_restore,
+              bg=_BG3, fg=_FG, font=("Malgun Gothic", 10),
+              relief="flat", bd=0, padx=16, pady=6,
+              cursor="hand2").pack(side="left")
 
     # ── Buttons ───────────────────────────────────────────────────────────────
     sep = tk.Frame(outer, bg=_BORDER, height=1)
@@ -196,7 +229,7 @@ def _run(on_save):
     ).pack(side="right")
 
     win.update_idletasks()
-    w, h = 500, win.winfo_reqheight() + 10
+    w, h = 520, win.winfo_reqheight() + 10
     win.geometry(f"{w}x{h}")
     win.mainloop()
 
@@ -207,7 +240,7 @@ def _apply_ttk_theme(win):
     s = ttk.Style(win)
     s.theme_use("clam")
     s.configure("TFrame",    background=_BG)
-    s.configure("TLabel",    background=_BG,  foreground=_FG,
+    s.configure("TLabel",    background=_BG, foreground=_FG,
                 font=("Malgun Gothic", 10))
     s.configure("TCheckbutton", background=_BG, foreground=_FG,
                 font=("Malgun Gothic", 10))
@@ -261,6 +294,80 @@ def _input_row(parent, label: str, var: tk.StringVar, width: int = 28):
              insertbackground=_FG, relief="flat", bd=0,
              highlightthickness=1, highlightbackground=_BORDER,
              highlightcolor=_ACCENT, width=width).pack(side="left")
+
+
+def _hotkey_row(parent, label: str, var: tk.StringVar, win):
+    """Hotkey row with keyboard-capture button."""
+    row = tk.Frame(parent, bg=_BG)
+    row.pack(fill="x", pady=3)
+
+    tk.Label(row, text=label, bg=_BG, fg=_FG,
+             font=("Malgun Gothic", 10), width=16, anchor="w").pack(side="left")
+
+    display = tk.Entry(
+        row, textvariable=var,
+        bg=_BG3, fg=_FG, insertbackground=_FG,
+        relief="flat", bd=0,
+        highlightthickness=1, highlightbackground=_BORDER,
+        highlightcolor=_ACCENT, width=22,
+        state="readonly", readonlybackground=_BG3,
+    )
+    display.pack(side="left", padx=(0, 8))
+
+    capturing = {"active": False}
+    _saved_value = [var.get()]
+
+    def start_capture():
+        capturing["active"]  = True
+        _saved_value[0]      = var.get()
+        display.config(state="normal")
+        var.set(t("hotkey_press"))
+        display.config(state="readonly", readonlybackground="#2a2a1a",
+                       highlightbackground=_ACCENT)
+        btn.config(text=t("cancel"), command=cancel_capture,
+                   bg="#3a3a2a", fg=_ACCENT)
+        win.bind("<KeyPress>", on_key)
+        win.focus_set()
+
+    def cancel_capture():
+        capturing["active"] = False
+        win.unbind("<KeyPress>")
+        display.config(state="normal")
+        var.set(_saved_value[0])
+        display.config(state="readonly", readonlybackground=_BG3,
+                       highlightbackground=_BORDER)
+        btn.config(text=t("hotkey_capture"), command=start_capture,
+                   bg=_BG3, fg=_FG)
+
+    def on_key(event):
+        if not capturing["active"]:
+            return
+        key = event.keysym.lower()
+        # ignore bare modifier presses
+        if key in ("control_l", "control_r", "shift_l", "shift_r",
+                   "alt_l", "alt_r", "super_l", "super_r", "caps_lock"):
+            return
+        modifiers = []
+        state = event.state
+        if state & 0x4:      modifiers.append("ctrl")
+        if state & 0x1:      modifiers.append("shift")
+        if state & 0x20000:  modifiers.append("alt")
+        hotkey = "+".join(modifiers + [key])
+        display.config(state="normal")
+        var.set(hotkey)
+        display.config(state="readonly", readonlybackground=_BG3,
+                       highlightbackground=_BORDER)
+        capturing["active"] = False
+        win.unbind("<KeyPress>")
+        btn.config(text=t("hotkey_capture"), command=start_capture,
+                   bg=_BG3, fg=_FG)
+
+    btn = tk.Button(
+        row, text=t("hotkey_capture"), command=start_capture,
+        bg=_BG3, fg=_FG, font=("Malgun Gothic", 9),
+        relief="flat", bd=0, padx=12, pady=4, cursor="hand2",
+    )
+    btn.pack(side="left")
 
 
 def _check(parent, text: str, var: tk.BooleanVar):

@@ -40,6 +40,13 @@ def init_db():
                 filename  TEXT NOT NULL,
                 filepath  TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS log (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                logged_at  TEXT NOT NULL,
+                level      TEXT NOT NULL,
+                category   TEXT NOT NULL,
+                message    TEXT NOT NULL
+            );
         """)
 
 
@@ -74,3 +81,53 @@ def history_add(type_: str, filename: str, filepath: str):
             "VALUES (?, ?, ?, ?)",
             (datetime.datetime.now().isoformat(), type_, filename, filepath),
         )
+
+
+# ── Log ───────────────────────────────────────────────────────────────────────
+
+def log_add(level: str, category: str, message: str):
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO log (logged_at, level, category, message) VALUES (?, ?, ?, ?)",
+            (datetime.datetime.now().isoformat(), level, category, message),
+        )
+
+
+def log_get(limit: int = 500) -> list[dict]:
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT logged_at, level, category, message FROM log "
+            "ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [{"time": r[0], "level": r[1], "category": r[2], "message": r[3]} for r in rows]
+
+
+def log_clear():
+    with _connect() as conn:
+        conn.execute("DELETE FROM log")
+
+
+# ── DB Backup / Restore ───────────────────────────────────────────────────────
+
+def backup_db(dest_folder: str) -> str:
+    """Copy live DB to dest_folder. Returns the backup file path."""
+    ts   = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    dest = os.path.join(dest_folder, f"txtdrop_backup_{ts}.db")
+    src  = _connect()
+    dst  = sqlite3.connect(dest)
+    with dst:
+        src.backup(dst)
+    dst.close()
+    src.close()
+    return dest
+
+
+def restore_db(src_path: str):
+    """Overwrite live DB with a backup file."""
+    src = sqlite3.connect(src_path)
+    dst = _connect()
+    with dst:
+        src.backup(dst)
+    src.close()
+    dst.close()
