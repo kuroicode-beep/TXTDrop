@@ -24,6 +24,9 @@ _STRINGS: dict[str, dict[str, str]] = {
         "restore_fail":       "복원 실패:\n{err}",
         # ollama
         "ollama_prompt":      "Ollama 서버가 실행되지 않았습니다.\n실행할까요?",
+        "ollama_starting":    "Ollama 서버를 시작하는 중…",
+        "ollama_started":     "Ollama 서버가 준비됐습니다.",
+        "ollama_not_found":   "ollama 명령을 찾을 수 없습니다. 설치를 확인해 주세요.",
         # settings sections
         "sec_folders":        "저장 폴더",
         "sec_filename":       "파일명",
@@ -96,6 +99,9 @@ _STRINGS: dict[str, dict[str, str]] = {
         "restore_fail":       "Restore failed:\n{err}",
         # ollama
         "ollama_prompt":      "Ollama server is not running.\nStart it now?",
+        "ollama_starting":    "Starting Ollama server…",
+        "ollama_started":     "Ollama server is ready.",
+        "ollama_not_found":   "ollama command not found. Please check your installation.",
         # settings sections
         "sec_folders":        "Save Folders",
         "sec_filename":       "Filename",

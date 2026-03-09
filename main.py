@@ -136,6 +136,7 @@ def _ollama_check():
     if not config.get_bool("ollama_autostart"):
         config.log_add("INFO", "ollama", "자동 시작 비활성화 — 건너뜀")
         return
+
     # is_running_cached() first call: synchronous check + fills cache for drop_clipboard()
     if ollama_client.is_running_cached():
         models = ollama_client.list_models()
@@ -143,25 +144,10 @@ def _ollama_check():
                        f"서버 실행 중 — 모델 {len(models)}개: {', '.join(models[:3])}")
         return
 
-    config.log_add("WARN", "ollama", "서버 미실행 — 사용자에게 확인 요청")
-
-    result = [False]
-    event  = threading.Event()
-
-    def _ask():
-        tmp = tk.Toplevel(tkr.get())
-        tmp.withdraw()
-        tmp.attributes("-topmost", True)
-        result[0] = messagebox.askyesno(
-            "TXTDrop — Ollama", t("ollama_prompt"), parent=tmp
-        )
-        tmp.destroy()
-        event.set()
-
-    tkr.call_on_main(_ask)
-    event.wait()
-
-    if result[0]:
+    # Auto-start without prompting — user already opted in via the setting
+    config.log_add("INFO", "ollama", "서버 미실행 — 자동 시작 시도")
+    notify.show_toast("Ollama", t("ollama_starting"), level="info")
+    try:
         subprocess.Popen(
             ["ollama", "serve"],
             stdout=subprocess.DEVNULL,
@@ -169,15 +155,22 @@ def _ollama_check():
             creationflags=subprocess.CREATE_NO_WINDOW,
         )
         config.log_add("INFO", "ollama", "ollama serve 백그라운드 시작됨")
+    except FileNotFoundError:
+        config.log_add("WARN", "ollama", "ollama 명령을 찾을 수 없음 — 설치 확인 필요")
+        notify.show_toast("Ollama", t("ollama_not_found"), level="error")
+        return
 
-        def _wait_and_refresh():
-            time.sleep(3)
-            ollama_client._refresh_cache()
+    def _wait_and_refresh():
+        time.sleep(5)   # ollama takes a few seconds to be ready
+        ollama_client._refresh_cache()
+        if ollama_client._cached_running:
+            models = ollama_client.list_models()
             config.log_add("INFO", "ollama",
-                           f"캐시 갱신 완료 — 실행 중: {ollama_client._cached_running}")
-        threading.Thread(target=_wait_and_refresh, daemon=True).start()
-    else:
-        config.log_add("INFO", "ollama", "사용자가 Ollama 시작 취소")
+                           f"자동 시작 완료 — 모델 {len(models)}개: {', '.join(models[:3])}")
+            notify.show_toast("Ollama", t("ollama_started"), level="info")
+        else:
+            config.log_add("WARN", "ollama", "자동 시작 후 서버 응답 없음")
+    threading.Thread(target=_wait_and_refresh, daemon=True).start()
 
 
 # ── First run ─────────────────────────────────────────────────────────────────
