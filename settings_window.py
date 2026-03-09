@@ -1,3 +1,9 @@
+"""
+settings_window.py — TXTDrop settings UI.
+
+Uses the shared hidden tk.Tk root (tk_root module): window is a
+tk.Toplevel, no mainloop() call needed.
+"""
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -18,22 +24,52 @@ _BORDER = "#383838"
 _MODELS_DEFAULT = ["llama3", "llama3.2", "phi3", "mistral", "gemma3", "qwen2.5"]
 _LANGUAGES      = [("한국어", "ko"), ("English", "en")]
 
+# Singleton: prevent multiple settings windows
+_win_ref  = [None]
+_win_lock = threading.Lock()
+
 
 def open_settings(on_save=None):
-    """Open the settings window in a daemon thread."""
-    threading.Thread(target=lambda: _run(on_save), daemon=True).start()
+    """Schedule settings window creation on the Tk thread. Safe from any thread."""
+    import tk_root as tkr
+    with _win_lock:
+        if _win_ref[0] is not None:
+            tkr.call_on_main(_raise_win)
+            return
+    tkr.call_on_main(lambda: _run(tkr.get(), on_save))
 
 
-# ── Private ───────────────────────────────────────────────────────────────────
+def _raise_win():
+    w = _win_ref[0]
+    if w:
+        try:
+            w.lift()
+            w.focus_force()
+        except tk.TclError:
+            with _win_lock:
+                _win_ref[0] = None
 
-def _run(on_save):
-    win = tk.Tk()
+
+# ── Private (Tk-thread only) ──────────────────────────────────────────────────
+
+def _run(root, on_save):
+    win = tk.Toplevel(root)
     win.title(t("settings_title"))
     win.configure(bg=_BG)
     win.resizable(False, False)
     win.attributes("-topmost", True)
 
-    _apply_ttk_theme(win)
+    with _win_lock:
+        _win_ref[0] = win
+
+    def on_close():
+        with _win_lock:
+            _win_ref[0] = None
+        win.destroy()
+
+    win.protocol("WM_DELETE_WINDOW", on_close)
+
+    _apply_ttk_theme()
 
     # ── Variables ─────────────────────────────────────────────────────────────
     v_text_folder  = tk.StringVar(value=config.get("text_save_folder"))
@@ -45,11 +81,10 @@ def _run(on_save):
     v_sound        = tk.BooleanVar(value=config.get_bool("sound_enabled"))
     v_lang         = tk.StringVar(value=config.get("language") or "ko")
 
-    # ── Scrollable canvas ─────────────────────────────────────────────────────
+    # ── Layout ────────────────────────────────────────────────────────────────
     outer = tk.Frame(win, bg=_BG)
     outer.pack(fill="both", expand=True)
 
-    # Header
     hdr = tk.Frame(outer, bg=_BG2, pady=14)
     hdr.pack(fill="x")
     tk.Label(hdr, text="TXTDrop", bg=_BG2, fg=_ACCENT,
@@ -57,7 +92,6 @@ def _run(on_save):
     tk.Label(hdr, text=t("settings_title"), bg=_BG2, fg=_DIM,
              font=("Malgun Gothic", 10)).pack(side="left", padx=4)
 
-    # Body
     body = tk.Frame(outer, bg=_BG, padx=24, pady=8)
     body.pack(fill="both", expand=True)
 
@@ -77,26 +111,21 @@ def _run(on_save):
     # ── Section: AI ───────────────────────────────────────────────────────────
     ai_hdr = tk.Frame(body, bg=_BG)
     ai_hdr.pack(fill="x", pady=(12, 2))
-
     tk.Label(ai_hdr, text=t("sec_ai"), bg=_BG, fg=_ACCENT,
              font=("Malgun Gothic", 10, "bold")).pack(side="left")
-
     srv_lbl = tk.Label(ai_hdr, text="  ● 확인 중…", bg=_BG, fg=_DIM,
                        font=("Malgun Gothic", 9))
     srv_lbl.pack(side="left", padx=(8, 0))
-
     tk.Frame(body, bg=_BORDER, height=1).pack(fill="x", pady=(2, 4))
 
     ai_row = tk.Frame(body, bg=_BG)
     ai_row.pack(fill="x", pady=3)
     tk.Label(ai_row, text=t("lbl_model"), bg=_BG, fg=_FG,
              font=("Malgun Gothic", 10), width=16, anchor="w").pack(side="left")
-
     models = ollama_client.list_models()
     cb = ttk.Combobox(ai_row, textvariable=v_model,
                       values=models, state="readonly", width=22)
     cb.pack(side="left")
-
     model_lbl = tk.Label(ai_row, text="", bg=_BG, font=("Malgun Gothic", 9))
     model_lbl.pack(side="left", padx=(8, 0))
 
@@ -119,16 +148,19 @@ def _run(on_save):
         _cached_models.extend(available)
 
         def _apply():
-            if running:
-                srv_lbl.config(text="  ● 실행 중", fg="#81c995")
-                cb.config(values=available)
-                cur      = v_model.get()
-                resolved = ollama_client.resolve_model(cur)
-                if cur not in available and resolved in available:
-                    v_model.set(resolved)
-            else:
-                srv_lbl.config(text="  ● 오프라인", fg="#f28b82")
-            _update_model_status()
+            try:
+                if running:
+                    srv_lbl.config(text="  ● 실행 중", fg="#81c995")
+                    cb.config(values=available)
+                    cur      = v_model.get()
+                    resolved = ollama_client.resolve_model(cur)
+                    if cur not in available and resolved in available:
+                        v_model.set(resolved)
+                else:
+                    srv_lbl.config(text="  ● 오프라인", fg="#f28b82")
+                _update_model_status()
+            except tk.TclError:
+                pass  # window closed while checking
 
         win.after(0, _apply)
 
@@ -176,8 +208,7 @@ def _run(on_save):
         )
         if not src:
             return
-        ok = messagebox.askyesno("TXTDrop", t("restore_confirm"), parent=win)
-        if not ok:
+        if not messagebox.askyesno("TXTDrop", t("restore_confirm"), parent=win):
             return
         try:
             config.restore_db(src)
@@ -189,20 +220,19 @@ def _run(on_save):
               bg=_BG3, fg=_FG, font=("Malgun Gothic", 10),
               relief="flat", bd=0, padx=16, pady=6,
               cursor="hand2").pack(side="left", padx=(0, 8))
-
     tk.Button(db_row, text=t("btn_restore"), command=do_restore,
               bg=_BG3, fg=_FG, font=("Malgun Gothic", 10),
               relief="flat", bd=0, padx=16, pady=6,
               cursor="hand2").pack(side="left")
 
-    # ── Buttons ───────────────────────────────────────────────────────────────
-    sep = tk.Frame(outer, bg=_BORDER, height=1)
-    sep.pack(fill="x")
-
+    # ── Save / Cancel ─────────────────────────────────────────────────────────
+    tk.Frame(outer, bg=_BORDER, height=1).pack(fill="x")
     btn_row = tk.Frame(outer, bg=_BG2, pady=12, padx=20)
     btn_row.pack(fill="x")
 
     def save():
+        lang_changed = v_lang.get() != config.get("language")
+
         config.set("text_save_folder",  v_text_folder.get().strip())
         config.set("image_save_folder", v_image_folder.get().strip())
         config.set("filename_prefix",   v_prefix.get().strip() or "txtdrop")
@@ -211,7 +241,14 @@ def _run(on_save):
         config.set_bool("ollama_autostart", v_autostart.get())
         config.set_bool("sound_enabled",    v_sound.get())
         config.set("language",          v_lang.get())
-        messagebox.showinfo("TXTDrop", t("saved"), parent=win)
+
+        msg = t("saved")
+        if lang_changed:
+            msg += "\n\n" + t("lang_restart_notice")
+        messagebox.showinfo("TXTDrop", msg, parent=win)
+
+        with _win_lock:
+            _win_ref[0] = None
         win.destroy()
         if on_save:
             on_save()
@@ -223,24 +260,22 @@ def _run(on_save):
     ).pack(side="right", padx=(8, 0))
 
     tk.Button(
-        btn_row, text=t("cancel"), command=win.destroy,
+        btn_row, text=t("cancel"), command=on_close,
         bg=_BG3, fg=_FG, font=("Malgun Gothic", 10),
         relief="flat", bd=0, padx=16, pady=7, cursor="hand2",
     ).pack(side="right")
 
     win.update_idletasks()
-    w, h = 520, win.winfo_reqheight() + 10
-    win.geometry(f"{w}x{h}")
-    win.mainloop()
+    win.geometry(f"520x{win.winfo_reqheight() + 10}")
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _apply_ttk_theme(win):
-    s = ttk.Style(win)
+def _apply_ttk_theme():
+    s = ttk.Style()
     s.theme_use("clam")
-    s.configure("TFrame",    background=_BG)
-    s.configure("TLabel",    background=_BG, foreground=_FG,
+    s.configure("TFrame",       background=_BG)
+    s.configure("TLabel",       background=_BG, foreground=_FG,
                 font=("Malgun Gothic", 10))
     s.configure("TCheckbutton", background=_BG, foreground=_FG,
                 font=("Malgun Gothic", 10))
@@ -297,7 +332,7 @@ def _input_row(parent, label: str, var: tk.StringVar, width: int = 28):
 
 
 def _hotkey_row(parent, label: str, var: tk.StringVar, win):
-    """Hotkey row with keyboard-capture button."""
+    """Hotkey entry with keyboard-capture and modifier-key validation."""
     row = tk.Frame(parent, bg=_BG)
     row.pack(fill="x", pady=3)
 
@@ -314,16 +349,19 @@ def _hotkey_row(parent, label: str, var: tk.StringVar, win):
     )
     display.pack(side="left", padx=(0, 8))
 
-    capturing = {"active": False}
-    _saved_value = [var.get()]
+    capturing  = {"active": False}
+    saved_val  = [var.get()]
+
+    def _set_display(text, bg=_BG3, border=_BORDER):
+        display.config(state="normal")
+        var.set(text)
+        display.config(state="readonly", readonlybackground=bg,
+                       highlightbackground=border)
 
     def start_capture():
-        capturing["active"]  = True
-        _saved_value[0]      = var.get()
-        display.config(state="normal")
-        var.set(t("hotkey_press"))
-        display.config(state="readonly", readonlybackground="#2a2a1a",
-                       highlightbackground=_ACCENT)
+        capturing["active"] = True
+        saved_val[0] = var.get()
+        _set_display(t("hotkey_press"), bg="#2a2a1a", border=_ACCENT)
         btn.config(text=t("cancel"), command=cancel_capture,
                    bg="#3a3a2a", fg=_ACCENT)
         win.bind("<KeyPress>", on_key)
@@ -332,33 +370,38 @@ def _hotkey_row(parent, label: str, var: tk.StringVar, win):
     def cancel_capture():
         capturing["active"] = False
         win.unbind("<KeyPress>")
-        display.config(state="normal")
-        var.set(_saved_value[0])
-        display.config(state="readonly", readonlybackground=_BG3,
-                       highlightbackground=_BORDER)
+        _set_display(saved_val[0])
         btn.config(text=t("hotkey_capture"), command=start_capture,
                    bg=_BG3, fg=_FG)
+
+    def _show_modifier_warning():
+        _set_display(t("hotkey_modifier_required"), bg="#3a1a1a", border="#f28b82")
+        win.after(2000, lambda: _set_display(t("hotkey_press"),
+                                             bg="#2a2a1a", border=_ACCENT))
 
     def on_key(event):
         if not capturing["active"]:
             return
         key = event.keysym.lower()
-        # ignore bare modifier presses
         if key in ("control_l", "control_r", "shift_l", "shift_r",
                    "alt_l", "alt_r", "super_l", "super_r", "caps_lock"):
-            return
+            return  # ignore bare modifier press
+
         modifiers = []
         state = event.state
         if state & 0x4:      modifiers.append("ctrl")
         if state & 0x1:      modifiers.append("shift")
         if state & 0x20000:  modifiers.append("alt")
+
+        if not modifiers:
+            # Require at least one modifier
+            _show_modifier_warning()
+            return
+
         hotkey = "+".join(modifiers + [key])
-        display.config(state="normal")
-        var.set(hotkey)
-        display.config(state="readonly", readonlybackground=_BG3,
-                       highlightbackground=_BORDER)
         capturing["active"] = False
         win.unbind("<KeyPress>")
+        _set_display(hotkey)
         btn.config(text=t("hotkey_capture"), command=start_capture,
                    bg=_BG3, fg=_FG)
 

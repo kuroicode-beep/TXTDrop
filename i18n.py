@@ -54,10 +54,24 @@ _STRINGS: dict[str, dict[str, str]] = {
         "save_fail_folder":   "저장 폴더가 설정되지 않았습니다.",
         "save_fail_empty":    "클립보드가 비어 있습니다.",
         # log window
-        "log_title":          "TXTDrop — 로그 기록",
-        "log_clear":          "로그 지우기",
-        "log_refresh":        "새로고침",
-        "log_empty":          "로그 기록이 없습니다.",
+        "log_title":              "TXTDrop — 로그 기록",
+        "log_clear":              "로그 지우기",
+        "log_refresh":            "새로고침",
+        "log_empty":              "로그 기록이 없습니다.",
+        "close":                  "닫기",
+        "tab_log":                "로그",
+        "tab_history":            "저장 기록",
+        "hist_col_time":          "저장 시각",
+        "hist_col_type":          "유형",
+        "hist_col_file":          "파일명",
+        "file_not_found":         "파일을 찾을 수 없습니다",
+        # ai toast
+        "toast_ai_generating":    "AI 제목 생성 중",
+        "toast_ai_body":          "Ollama로 제목을 생성하는 중입니다…",
+        # hotkey
+        "hotkey_modifier_required": "Ctrl/Shift/Alt 중 하나 이상 필요",
+        # language restart
+        "lang_restart_notice":    "언어 변경은 재시작 후 적용됩니다.",
     },
     "en": {
         # tray
@@ -112,10 +126,24 @@ _STRINGS: dict[str, dict[str, str]] = {
         "save_fail_folder":   "Save folder is not configured.",
         "save_fail_empty":    "Clipboard is empty.",
         # log window
-        "log_title":          "TXTDrop — Log History",
-        "log_clear":          "Clear Logs",
-        "log_refresh":        "Refresh",
-        "log_empty":          "No log entries.",
+        "log_title":              "TXTDrop — Log History",
+        "log_clear":              "Clear Logs",
+        "log_refresh":            "Refresh",
+        "log_empty":              "No log entries.",
+        "close":                  "Close",
+        "tab_log":                "Log",
+        "tab_history":            "Save History",
+        "hist_col_time":          "Saved At",
+        "hist_col_type":          "Type",
+        "hist_col_file":          "Filename",
+        "file_not_found":         "File not found",
+        # ai toast
+        "toast_ai_generating":    "Generating AI Title",
+        "toast_ai_body":          "Generating title with Ollama…",
+        # hotkey
+        "hotkey_modifier_required": "Ctrl/Shift/Alt required",
+        # language restart
+        "lang_restart_notice":    "Language change takes effect after restart.",
     },
 }
 

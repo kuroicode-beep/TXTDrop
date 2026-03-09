@@ -1,5 +1,7 @@
 import json
 import re
+import time
+import threading
 import urllib.request
 import urllib.error
 
@@ -8,6 +10,11 @@ OLLAMA_URL = "http://localhost:11434"
 _FALLBACK_MODELS = [
     "llama3", "llama3.2", "phi3", "mistral", "gemma3", "qwen2.5",
 ]
+
+# ── Cached status ─────────────────────────────────────────────────────────────
+_cache_lock     = threading.Lock()
+_cached_running: bool | None = None
+_cache_time:     float       = 0.0
 
 
 def is_running() -> bool:
@@ -18,10 +25,45 @@ def is_running() -> bool:
         return False
 
 
+def is_running_cached(ttl: int = 10) -> bool:
+    """
+    Return cached Ollama status.  If the cache is older than *ttl* seconds,
+    kick off a background refresh and return the stale value immediately.
+    On first call (no cache yet) falls back to a synchronous check.
+    """
+    global _cached_running, _cache_time
+    with _cache_lock:
+        now   = time.monotonic()
+        stale = _cached_running
+        age   = now - _cache_time
+
+    if stale is None:
+        # first call — synchronous (only once)
+        result = is_running()
+        with _cache_lock:
+            _cached_running = result
+            _cache_time     = time.monotonic()
+        return result
+
+    if age >= ttl:
+        # cache expired — refresh in background, return stale immediately
+        threading.Thread(target=_refresh_cache, daemon=True).start()
+
+    return stale
+
+
+def _refresh_cache():
+    global _cached_running, _cache_time
+    result = is_running()
+    with _cache_lock:
+        _cached_running = result
+        _cache_time     = time.monotonic()
+
+
 def list_models() -> list[str]:
     try:
         with urllib.request.urlopen(f"{OLLAMA_URL}/api/tags", timeout=5) as r:
-            data = json.loads(r.read())
+            data  = json.loads(r.read())
             names = [m["name"] for m in data.get("models", [])]
             return names if names else _FALLBACK_MODELS
     except Exception:
@@ -42,21 +84,17 @@ def resolve_model(model: str) -> str:
     if not available or available == _FALLBACK_MODELS:
         return model
 
-    # 1. Exact
     if model in available:
         return model
 
-    # 2. :latest
     with_latest = f"{model}:latest"
     if with_latest in available:
         return with_latest
 
-    # 3. Prefix — pick shortest match (most specific)
     prefix_matches = [m for m in available if m.startswith(model)]
     if prefix_matches:
         return sorted(prefix_matches, key=len)[0]
 
-    # 4. First available
     return available[0]
 
 
@@ -64,6 +102,7 @@ def generate_title(text: str, model: str) -> str | None:
     """
     Ask Ollama to produce a short, file-safe title for *text*.
     Returns a sanitized string, or None on any failure.
+    Timeout reduced to 10 s for faster fallback.
     """
     resolved = resolve_model(model)
 
@@ -86,13 +125,10 @@ def generate_title(text: str, model: str) -> str | None:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=30) as r:
+        with urllib.request.urlopen(req, timeout=10) as r:
             result = json.loads(r.read())
-
-            # Ollama returns {"error": "..."} on model-not-found etc.
             if "error" in result:
                 return None
-
             raw = result.get("response", "").strip()
             return _sanitize(raw) or None
     except Exception:
@@ -100,7 +136,7 @@ def generate_title(text: str, model: str) -> str | None:
 
 
 def _sanitize(title: str) -> str:
-    title = title.strip().splitlines()[0]          # first line only
+    title = title.strip().splitlines()[0]
     title = re.sub(r"[^\w\s가-힣a-zA-Z0-9\-]", "", title)
     title = re.sub(r"\s+", "-", title.strip())
     return title[:50]

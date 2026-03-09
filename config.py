@@ -1,5 +1,6 @@
 import os
 import sys
+import random
 import sqlite3
 import datetime
 
@@ -48,6 +49,10 @@ def init_db():
                 message    TEXT NOT NULL
             );
         """)
+        # Purge logs older than 30 days on startup
+        conn.execute(
+            "DELETE FROM log WHERE logged_at < datetime('now', '-30 days')"
+        )
 
 
 def get(key: str) -> str:
@@ -91,6 +96,16 @@ def log_add(level: str, category: str, message: str):
             "INSERT INTO log (logged_at, level, category, message) VALUES (?, ?, ?, ?)",
             (datetime.datetime.now().isoformat(), level, category, message),
         )
+        # 1 % chance: purge logs older than 30 days (keeps table lean)
+        if random.random() < 0.01:
+            conn.execute(
+                "DELETE FROM log WHERE logged_at < datetime('now', '-30 days')"
+            )
+
+
+def log_count() -> int:
+    with _connect() as conn:
+        return conn.execute("SELECT COUNT(*) FROM log").fetchone()[0]
 
 
 def log_get(limit: int = 500) -> list[dict]:
@@ -131,3 +146,16 @@ def restore_db(src_path: str):
         src.backup(dst)
     src.close()
     dst.close()
+
+
+def history_get(limit: int = 500) -> list[dict]:
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT saved_at, type, filename, filepath FROM history "
+            "ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [
+        {"time": r[0], "type": r[1], "filename": r[2], "filepath": r[3]}
+        for r in rows
+    ]

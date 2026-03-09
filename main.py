@@ -1,5 +1,4 @@
 import os
-import sys
 import datetime
 import threading
 import subprocess
@@ -7,10 +6,10 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 
 import keyboard
-import pyperclip
 from PIL import Image, ImageGrab, ImageDraw
 import pystray
 
+import tk_root as tkr
 import config
 import ollama_client
 import sound
@@ -26,17 +25,15 @@ def _timestamp() -> str:
     return datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
-def _text_filename(text: str) -> str:
-    """Build filename for a text clip. Uses AI title when Ollama is available."""
+def _text_filename(text: str, ollama_running: bool) -> str:
+    """Build filename.  Uses AI title only when ollama_running is True."""
     prefix = config.get("filename_prefix") or "txtdrop"
     ts     = _timestamp()
-
-    if ollama_client.is_running():
+    if ollama_running:
         model = config.get("ollama_model") or "llama3"
         title = ollama_client.generate_title(text, model)
         if title:
             return f"{prefix}_{title}_{ts}.txt"
-
     return f"{prefix}_{ts}.txt"
 
 
@@ -92,10 +89,12 @@ def drop_clipboard():
 
     # ── Text ─────────────────────────────────────────────────────────────────
     try:
+        import pyperclip
         text = pyperclip.paste()
         if not text or not text.strip():
             config.log_add("WARN", "save", t("save_fail_empty"))
             return
+
         folder = _text_folder()
         if not folder:
             msg = t("save_fail_folder")
@@ -103,7 +102,14 @@ def drop_clipboard():
             notify.show_toast(t("toast_fail"), msg,
                               on_click=log_window.open_log, level="error")
             return
-        filename = _text_filename(text)
+
+        # Show AI-progress toast if Ollama is available (non-blocking)
+        ollama_ok = ollama_client.is_running_cached()
+        if ollama_ok:
+            notify.show_toast(t("toast_ai_generating"), t("toast_ai_body"),
+                              level="info")
+
+        filename = _text_filename(text, ollama_ok)
         filepath = os.path.join(folder, filename)
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(text)
@@ -113,6 +119,7 @@ def drop_clipboard():
             sound.play_drop()
         notify.show_toast(t("toast_ok"), filename,
                           on_click=log_window.open_log)
+
     except Exception as e:
         msg = f"[text] {e}"
         config.log_add("ERROR", "save", msg)
@@ -135,13 +142,23 @@ def _ollama_check():
 
     config.log_add("WARN", "ollama", "서버 미실행 — 사용자에게 확인 요청")
 
-    root = tk.Tk()
-    root.withdraw()
-    root.attributes("-topmost", True)
-    ok = messagebox.askyesno("TXTDrop — Ollama", t("ollama_prompt"), parent=root)
-    root.destroy()
+    result = [False]
+    event  = threading.Event()
 
-    if ok:
+    def _ask():
+        tmp = tk.Toplevel(tkr.get())
+        tmp.withdraw()
+        tmp.attributes("-topmost", True)
+        result[0] = messagebox.askyesno(
+            "TXTDrop — Ollama", t("ollama_prompt"), parent=tmp
+        )
+        tmp.destroy()
+        event.set()
+
+    tkr.call_on_main(_ask)
+    event.wait()
+
+    if result[0]:
         subprocess.Popen(
             ["ollama", "serve"],
             stdout=subprocess.DEVNULL,
@@ -156,21 +173,25 @@ def _ollama_check():
 # ── First run ─────────────────────────────────────────────────────────────────
 
 def _first_run() -> bool:
-    root = tk.Tk()
-    root.withdraw()
-    root.attributes("-topmost", True)
-    messagebox.showinfo(t("first_run_title"), t("first_run_msg"), parent=root)
-    root.destroy()
+    result = [None]
+    event  = threading.Event()
 
-    root = tk.Tk()
-    root.withdraw()
-    root.attributes("-topmost", True)
-    folder = filedialog.askdirectory(title=t("select_folder"), parent=root)
-    root.destroy()
+    def _do():
+        tmp = tk.Toplevel(tkr.get())
+        tmp.withdraw()
+        tmp.attributes("-topmost", True)
+        messagebox.showinfo(t("first_run_title"), t("first_run_msg"), parent=tmp)
+        folder = filedialog.askdirectory(title=t("select_folder"), parent=tmp)
+        tmp.destroy()
+        result[0] = folder
+        event.set()
 
+    tkr.call_on_main(_do)
+    event.wait()
+
+    folder = result[0]
     if not folder:
         return False
-
     config.set("text_save_folder",  folder)
     config.set("image_save_folder", folder)
     config.log_add("INFO", "startup", f"첫 실행 — 저장 폴더 설정: {folder}")
@@ -196,9 +217,14 @@ def _make_icon() -> Image.Image:
 
 def main():
     config.init_db()
+
+    # Start the shared Tk root FIRST so UI calls work before tray.run()
+    tkr.init()
+    tkr.start()
+
     config.log_add("INFO", "startup", "TXTDrop 시작됨")
 
-    # First-run folder setup
+    # First-run folder setup (uses tkr event loop)
     if not config.get("text_save_folder"):
         if not _first_run():
             config.log_add("WARN", "startup", "첫 실행 폴더 선택 취소 — 종료")
@@ -213,8 +239,7 @@ def main():
         hotkey_state["current"],
         lambda: threading.Thread(target=drop_clipboard, daemon=True).start(),
     )
-    config.log_add("INFO", "startup",
-                   f"단축키 등록: {hotkey_state['current']}")
+    config.log_add("INFO", "startup", f"단축키 등록: {hotkey_state['current']}")
 
     # ── Tray callbacks ────────────────────────────────────────────────────────
 
