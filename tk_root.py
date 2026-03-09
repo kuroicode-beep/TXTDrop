@@ -5,16 +5,19 @@ A single hidden tk.Tk() instance is created once and shared by all UI
 modules (notify, log_window, settings_window).  Every other window is a
 tk.Toplevel so Windows' message queue is never split across threads.
 
+IMPORTANT: Tkinter mainloop() MUST run on the OS main thread.
+Call tkr.init() early, then run tray.run_detached() for pystray, and
+finally call tkr.get().mainloop() on the main thread.
+
 Usage
 -----
     import tk_root as tkr
-    tkr.init()          # call once in main(), before any UI
-    tkr.start()         # starts mainloop in a daemon thread
+    tkr.init()                    # call once in main(), before any UI
     tkr.call_on_main(fn, *args)   # schedule work on the Tk thread
-    tkr.get()           # returns the root Tk instance
+    tkr.get()                     # returns the root Tk instance
+    tkr.get().mainloop()          # block main thread in Tk event loop
 """
 import tkinter as tk
-import threading
 
 _root: tk.Tk | None = None
 
@@ -29,11 +32,6 @@ def init() -> tk.Tk:
 
 def get() -> tk.Tk:
     return _root
-
-
-def start():
-    """Run the Tk event loop in a daemon thread (non-blocking)."""
-    threading.Thread(target=_root.mainloop, name="TkMainLoop", daemon=True).start()
 
 
 def call_on_main(fn, *args):

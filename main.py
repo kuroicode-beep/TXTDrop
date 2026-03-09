@@ -275,9 +275,8 @@ def _make_icon() -> Image.Image:
 def main():
     config.init_db()
 
-    # Start the shared Tk root FIRST so UI calls work before tray.run()
+    # Create the shared Tk root on the main thread (mainloop runs here later)
     tkr.init()
-    tkr.start()
 
     config.log_add("INFO", "startup", "TXTDrop 시작됨")
 
@@ -328,6 +327,7 @@ def main():
         time.sleep(0.1)   # allow SQLite commit to complete before process exit
         if tray_ref[0]:
             tray_ref[0].stop()
+        tkr.get().quit()  # stop the Tk mainloop on the main thread
 
     # pystray native-menu callbacks (keep for fallback / accessibility)
     def on_settings(icon, item): _do_settings()
@@ -349,7 +349,11 @@ def main():
     # Replace native right-click menu with custom dark Tk menu
     _patch_tray_dark_menu(tray, _do_settings, _do_log, _do_exit)
 
-    tray.run()
+    # Run pystray in a background thread so the main thread can own mainloop()
+    tray.run_detached()
+
+    # Block the main thread with the Tk event loop — required on Windows
+    tkr.get().mainloop()
 
 
 if __name__ == "__main__":
