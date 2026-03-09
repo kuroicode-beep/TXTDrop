@@ -8,8 +8,14 @@ def play_drop():
 
 
 def _beep():
+    import config
     try:
-        winsound.Beep(1200, 55)
-        winsound.Beep(880,  85)
-    except Exception:
-        pass
+        winsound.Beep(1200, 120)
+        winsound.Beep(880,  180)
+    except Exception as e:
+        try:
+            # Fallback: Windows system sound
+            winsound.MessageBeep(winsound.MB_OK)
+        except Exception:
+            pass
+        config.log_add("WARN", "sound", f"Beep 실패: {e}")

@@ -79,6 +79,7 @@ def drop_clipboard():
             config.history_add("image", filename, filepath)
             config.log_add("INFO", "save", f"[image] {filename}")
             if config.get_bool("sound_enabled"):
+                config.log_add("INFO", "sound", "play")
                 sound.play_drop()
             notify.show_toast(t("toast_ok"), filename,
                               on_click=log_window.open_log)
@@ -118,6 +119,7 @@ def drop_clipboard():
         config.history_add("text", filename, filepath)
         config.log_add("INFO", "save", f"[text] {filename}")
         if config.get_bool("sound_enabled"):
+            config.log_add("INFO", "sound", "play")
             sound.play_drop()
         notify.show_toast(t("toast_ok"), filename,
                           on_click=log_window.open_log)
