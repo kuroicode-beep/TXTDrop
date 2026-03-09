@@ -25,7 +25,7 @@ if errorlevel 1 (
 :: -------------------------------------------------------
 echo.
 echo [2/3] Building executable with PyInstaller...
-pyinstaller --noconsole --onefile --icon icon.ico --name TXTDrop main.py --clean
+pyinstaller --noconsole --onefile --icon icon.ico --name TXTDrop main.py --clean --hidden-import winsound
 if errorlevel 1 (
     echo.
     echo  ERROR: PyInstaller build failed.

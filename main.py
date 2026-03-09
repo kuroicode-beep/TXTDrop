@@ -4,7 +4,6 @@ import sqlite3
 import datetime
 import threading
 import subprocess
-import urllib.request
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
@@ -13,138 +12,151 @@ import pyperclip
 from PIL import Image, ImageGrab, ImageDraw
 import pystray
 
-if getattr(sys, "frozen", False):
-    BASE_DIR = os.path.dirname(sys.executable)
-else:
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-DB_FILE = os.path.join(BASE_DIR, "txtdrop.db")
-
-
-# ------------------------------------------------------------------
-# Database
-# ------------------------------------------------------------------
-
-def db_connect():
-    return sqlite3.connect(DB_FILE)
+import config
+import ollama_client
+import sound
+import settings_window
+from i18n import t
 
 
-def db_init():
-    with db_connect() as conn:
-        conn.executescript("""
-            CREATE TABLE IF NOT EXISTS config (
-                key   TEXT PRIMARY KEY,
-                value TEXT
-            );
-            CREATE TABLE IF NOT EXISTS history (
-                id        INTEGER PRIMARY KEY AUTOINCREMENT,
-                saved_at  TEXT NOT NULL,
-                type      TEXT NOT NULL,
-                filename  TEXT NOT NULL,
-                filepath  TEXT NOT NULL
-            );
-        """)
+# ── Filename helpers ──────────────────────────────────────────────────────────
+
+def _timestamp() -> str:
+    return datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
-def config_get(key):
-    with db_connect() as conn:
-        row = conn.execute(
-            "SELECT value FROM config WHERE key = ?", (key,)
-        ).fetchone()
-    return row[0] if row else None
+def _text_filename(text: str) -> str:
+    """Build filename for a text clip. Uses AI title when Ollama is available."""
+    prefix = config.get("filename_prefix") or "txtdrop"
+    ts     = _timestamp()
+
+    if ollama_client.is_running():
+        model = config.get("ollama_model") or "llama3"
+        title = ollama_client.generate_title(text, model)
+        if title:
+            return f"{prefix}_{title}_{ts}.txt"
+
+    return f"{prefix}_{ts}.txt"
 
 
-def config_set(key, value):
-    with db_connect() as conn:
-        conn.execute(
-            "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
-            (key, value),
-        )
+def _image_filename() -> str:
+    prefix = config.get("filename_prefix") or "txtdrop"
+    return f"{prefix}_{_timestamp()}.png"
 
 
-def history_add(type_, filename, filepath):
-    with db_connect() as conn:
-        conn.execute(
-            "INSERT INTO history (saved_at, type, filename, filepath) VALUES (?, ?, ?, ?)",
-            (datetime.datetime.now().isoformat(), type_, filename, filepath),
-        )
+# ── Folder helpers ────────────────────────────────────────────────────────────
+
+def _text_folder() -> str | None:
+    f = config.get("text_save_folder")
+    return f if f and os.path.isdir(f) else None
 
 
-# ------------------------------------------------------------------
-# UI helpers
-# ------------------------------------------------------------------
+def _image_folder() -> str | None:
+    f = config.get("image_save_folder")
+    if f and os.path.isdir(f):
+        return f
+    return _text_folder()   # fallback
 
-def pick_folder(title="Select Save Folder"):
+
+# ── Clipboard save ────────────────────────────────────────────────────────────
+
+def drop_clipboard():
+    # ── Image ────────────────────────────────────────────────────────────────
+    try:
+        img = ImageGrab.grabclipboard()
+        if isinstance(img, Image.Image):
+            folder = _image_folder()
+            if not folder:
+                return
+            filename = _image_filename()
+            filepath = os.path.join(folder, filename)
+            img.save(filepath, "PNG")
+            config.history_add("image", filename, filepath)
+            if config.get_bool("sound_enabled"):
+                sound.play_drop()
+            return
+    except Exception:
+        pass
+
+    # ── Text ─────────────────────────────────────────────────────────────────
+    try:
+        text = pyperclip.paste()
+        if text and text.strip():
+            folder = _text_folder()
+            if not folder:
+                return
+            filename = _text_filename(text)
+            filepath = os.path.join(folder, filename)
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(text)
+            config.history_add("text", filename, filepath)
+            if config.get_bool("sound_enabled"):
+                sound.play_drop()
+    except Exception:
+        pass
+
+
+# ── DB helpers ────────────────────────────────────────────────────────────────
+
+def _backup_db():
     root = tk.Tk()
     root.withdraw()
     root.attributes("-topmost", True)
-    folder = filedialog.askdirectory(title=title, parent=root)
+    folder = filedialog.askdirectory(
+        title="TXTDrop — Select Backup Destination", parent=root
+    )
     root.destroy()
-    return folder or None
-
-
-def backup_db():
-    folder = pick_folder("TXTDrop — Select Backup Destination")
     if not folder:
         return
 
-    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    ts   = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     dest = os.path.join(folder, f"txtdrop_backup_{ts}.db")
-
     try:
-        # Use SQLite online backup API to ensure a consistent snapshot
-        src = db_connect()
+        src = sqlite3.connect(config.DB_FILE)
         dst = sqlite3.connect(dest)
         with dst:
             src.backup(dst)
         dst.close()
         src.close()
-        _notify(f"Backup saved:\n{dest}")
+        _notify(t("backup_success", path=dest))
     except Exception as e:
-        _notify(f"Backup failed:\n{e}", error=True)
+        _notify(t("backup_fail", err=e), error=True)
 
 
-def restore_db():
+def _restore_db():
     root = tk.Tk()
     root.withdraw()
     root.attributes("-topmost", True)
     src_path = filedialog.askopenfilename(
-        title="TXTDrop — Select Backup File to Restore",
+        title="TXTDrop — Select Backup File",
         filetypes=[("TXTDrop Database", "*.db"), ("All files", "*.*")],
         parent=root,
     )
     root.destroy()
-
     if not src_path:
         return
 
-    # Confirm before overwriting
     root = tk.Tk()
     root.withdraw()
     root.attributes("-topmost", True)
-    confirmed = messagebox.askyesno(
-        "TXTDrop — Restore",
-        f"Restore database from:\n{src_path}\n\nCurrent data will be overwritten. Continue?",
-        parent=root,
-    )
+    ok = messagebox.askyesno("TXTDrop", t("restore_confirm"), parent=root)
     root.destroy()
-
-    if not confirmed:
+    if not ok:
         return
 
     try:
         src = sqlite3.connect(src_path)
-        dst = db_connect()
+        dst = sqlite3.connect(config.DB_FILE)
         with dst:
             src.backup(dst)
         src.close()
         dst.close()
-        _notify("Restore complete.\nRestart TXTDrop to apply changes.")
+        _notify(t("restore_success"))
     except Exception as e:
-        _notify(f"Restore failed:\n{e}", error=True)
+        _notify(t("restore_fail", err=e), error=True)
 
 
-def _notify(message, error=False):
+def _notify(message: str, error: bool = False):
     root = tk.Tk()
     root.withdraw()
     root.attributes("-topmost", True)
@@ -155,46 +167,21 @@ def _notify(message, error=False):
     root.destroy()
 
 
-def make_tray_icon():
-    size = 64
-    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    try:
-        d.rounded_rectangle([4, 4, 60, 60], radius=10, fill=(41, 128, 185))
-    except AttributeError:
-        d.rectangle([4, 4, 60, 60], fill=(41, 128, 185))
-    d.rectangle([16, 16, 48, 23], fill="white")  # top bar
-    d.rectangle([28, 16, 36, 50], fill="white")  # stem
-    return img
+# ── Ollama autostart check ────────────────────────────────────────────────────
 
-
-# ------------------------------------------------------------------
-# Ollama
-# ------------------------------------------------------------------
-
-def ollama_is_running():
-    try:
-        urllib.request.urlopen("http://localhost:11434", timeout=2)
-        return True
-    except Exception:
-        return False
-
-
-def ollama_check_and_prompt():
-    if ollama_is_running():
+def _ollama_check():
+    if not config.get_bool("ollama_autostart"):
+        return
+    if ollama_client.is_running():
         return
 
     root = tk.Tk()
     root.withdraw()
     root.attributes("-topmost", True)
-    confirmed = messagebox.askyesno(
-        "TXTDrop — Ollama",
-        "Ollama 서버가 실행되지 않았습니다.\n\n실행할까요?",
-        parent=root,
-    )
+    ok = messagebox.askyesno("TXTDrop — Ollama", t("ollama_prompt"), parent=root)
     root.destroy()
 
-    if confirmed:
+    if ok:
         subprocess.Popen(
             ["ollama", "serve"],
             stdout=subprocess.DEVNULL,
@@ -203,74 +190,86 @@ def ollama_check_and_prompt():
         )
 
 
-# ------------------------------------------------------------------
-# Clipboard
-# ------------------------------------------------------------------
+# ── First run ─────────────────────────────────────────────────────────────────
 
-def timestamp():
-    return datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+def _first_run() -> bool:
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+    messagebox.showinfo(t("first_run_title"), t("first_run_msg"), parent=root)
+    root.destroy()
+
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+    folder = filedialog.askdirectory(title=t("select_folder"), parent=root)
+    root.destroy()
+
+    if not folder:
+        return False
+
+    config.set("text_save_folder",  folder)
+    config.set("image_save_folder", folder)
+    return True
 
 
-def drop_clipboard(save_folder):
-    # Image takes priority over text
+# ── Tray icon ─────────────────────────────────────────────────────────────────
+
+def _make_icon() -> Image.Image:
+    size = 64
+    img  = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    d    = ImageDraw.Draw(img)
     try:
-        img = ImageGrab.grabclipboard()
-        if isinstance(img, Image.Image):
-            filename = f"txtdrop_{timestamp()}.png"
-            filepath = os.path.join(save_folder, filename)
-            img.save(filepath, "PNG")
-            history_add("image", filename, filepath)
-            return
-    except Exception:
-        pass
-
-    try:
-        text = pyperclip.paste()
-        if text and text.strip():
-            filename = f"txtdrop_{timestamp()}.txt"
-            filepath = os.path.join(save_folder, filename)
-            with open(filepath, "w", encoding="utf-8") as f:
-                f.write(text)
-            history_add("text", filename, filepath)
-    except Exception:
-        pass
+        d.rounded_rectangle([4, 4, 60, 60], radius=10, fill=(41, 128, 185))
+    except AttributeError:
+        d.rectangle([4, 4, 60, 60], fill=(41, 128, 185))
+    d.rectangle([16, 16, 48, 23], fill="white")
+    d.rectangle([28, 16, 36, 50], fill="white")
+    return img
 
 
-# ------------------------------------------------------------------
-# Main
-# ------------------------------------------------------------------
+# ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
-    db_init()
-    threading.Thread(target=ollama_check_and_prompt, daemon=True).start()
+    config.init_db()
 
-    save_folder = config_get("save_folder")
-    if not save_folder or not os.path.isdir(save_folder):
-        save_folder = pick_folder("TXTDrop — Select Save Folder")
-        if not save_folder:
+    # First-run folder setup
+    if not config.get("text_save_folder"):
+        if not _first_run():
             return
-        config_set("save_folder", save_folder)
 
-    state = {"save_folder": save_folder}
+    # Ollama check in background
+    threading.Thread(target=_ollama_check, daemon=True).start()
 
-    def on_hotkey():
-        drop_clipboard(state["save_folder"])
+    # Register hotkey
+    hotkey_state = {"current": config.get("hotkey") or "ctrl+shift+z"}
+    keyboard.add_hotkey(
+        hotkey_state["current"],
+        lambda: threading.Thread(target=drop_clipboard, daemon=True).start(),
+    )
 
-    keyboard.add_hotkey("ctrl+shift+z", on_hotkey)
+    # ── Tray callbacks ────────────────────────────────────────────────────────
 
-    def on_change_folder(icon, item):
-        def do():
-            folder = pick_folder("TXTDrop — Change Save Folder")
-            if folder:
-                state["save_folder"] = folder
-                config_set("save_folder", folder)
-        threading.Thread(target=do, daemon=True).start()
+    def on_settings(icon, item):
+        def on_save():
+            new_hk = config.get("hotkey") or "ctrl+shift+z"
+            if new_hk != hotkey_state["current"]:
+                try:
+                    keyboard.remove_hotkey(hotkey_state["current"])
+                except Exception:
+                    pass
+                keyboard.add_hotkey(
+                    new_hk,
+                    lambda: threading.Thread(target=drop_clipboard, daemon=True).start(),
+                )
+                hotkey_state["current"] = new_hk
+        settings_window.open_settings(on_save=on_save)
 
-    def on_backup_db(icon, item):
-        threading.Thread(target=backup_db, daemon=True).start()
+    def on_backup(icon, item):
+        threading.Thread(target=_backup_db, daemon=True).start()
 
-    def on_restore_db(icon, item):
-        threading.Thread(target=restore_db, daemon=True).start()
+    def on_restore(icon, item):
+        threading.Thread(target=_restore_db, daemon=True).start()
 
     def on_exit(icon, item):
         keyboard.unhook_all()
@@ -278,13 +277,13 @@ def main():
 
     tray = pystray.Icon(
         name="TXTDrop",
-        icon=make_tray_icon(),
+        icon=_make_icon(),
         title="TXTDrop",
         menu=pystray.Menu(
-            pystray.MenuItem("Change Folder", on_change_folder),
-            pystray.MenuItem("Backup Database", on_backup_db),
-            pystray.MenuItem("Restore Database", on_restore_db),
-            pystray.MenuItem("Exit", on_exit),
+            pystray.MenuItem(lambda item: t("settings"), on_settings),
+            pystray.MenuItem(lambda item: t("backup_db"), on_backup),
+            pystray.MenuItem(lambda item: t("restore_db"), on_restore),
+            pystray.MenuItem(lambda item: t("exit"), on_exit),
         ),
     )
     tray.run()
