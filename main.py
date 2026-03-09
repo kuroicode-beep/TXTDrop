@@ -1,4 +1,5 @@
 import os
+import ctypes
 import datetime
 import threading
 import subprocess
@@ -198,6 +199,59 @@ def _first_run() -> bool:
     return True
 
 
+# ── Dark tray menu ───────────────────────────────────────────────────────────
+
+def _dark_tray_menu(settings_cb, log_cb, exit_cb):
+    """Show a custom dark Tk popup menu at the current cursor position."""
+    class _POINT(ctypes.Structure):
+        _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+    pt = _POINT()
+    ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
+    cx, cy = pt.x, pt.y
+
+    def _popup():
+        root = tkr.get()
+        menu = tk.Menu(
+            root, tearoff=0,
+            bg="#1c1c1c", fg="#f0f0f0",
+            activebackground="#2d2d2d", activeforeground="#ffd600",
+            font=("Malgun Gothic", 10),
+            bd=0, relief="flat",
+            activeborderwidth=0,
+        )
+        menu.add_command(label=t("settings"),    command=settings_cb)
+        menu.add_command(label=t("log_history"), command=log_cb)
+        menu.add_separator()
+        menu.add_command(label=t("exit"),        command=exit_cb)
+        menu.tk_popup(cx, cy)
+
+    tkr.call_on_main(_popup)
+
+
+def _patch_tray_dark_menu(tray, settings_cb, log_cb, exit_cb):
+    """
+    Monkey-patch pystray's WM_RBUTTONUP handler to show a custom dark menu
+    instead of the native Windows popup.  Falls back silently if pystray's
+    internals have changed.
+    """
+    try:
+        import types
+        import pystray._win32 as _pw
+
+        WM_LBUTTONUP = 0x0202
+        WM_RBUTTONUP = 0x0205
+
+        def _custom_on_notify(self, wparam, lparam):
+            if lparam == WM_LBUTTONUP:
+                self()   # default left-click action
+            elif lparam == WM_RBUTTONUP:
+                _dark_tray_menu(settings_cb, log_cb, exit_cb)
+
+        tray._on_notify = types.MethodType(_custom_on_notify, tray)
+    except Exception:
+        pass   # gracefully keep native menu on any failure
+
+
 # ── Tray icon ─────────────────────────────────────────────────────────────────
 
 def _make_icon() -> Image.Image:
@@ -243,7 +297,9 @@ def main():
 
     # ── Tray callbacks ────────────────────────────────────────────────────────
 
-    def on_settings(icon, item):
+    tray_ref = [None]   # filled after tray creation
+
+    def _do_settings():
         def on_save():
             new_hk = config.get("hotkey") or "ctrl+shift+z"
             if new_hk != hotkey_state["current"]:
@@ -260,13 +316,19 @@ def main():
                 hotkey_state["current"] = new_hk
         settings_window.open_settings(on_save=on_save)
 
-    def on_log(icon, item):
+    def _do_log():
         log_window.open_log()
 
-    def on_exit(icon, item):
+    def _do_exit():
         config.log_add("INFO", "startup", "TXTDrop 종료됨")
         keyboard.unhook_all()
-        icon.stop()
+        if tray_ref[0]:
+            tray_ref[0].stop()
+
+    # pystray native-menu callbacks (keep for fallback / accessibility)
+    def on_settings(icon, item): _do_settings()
+    def on_log(icon, item):      _do_log()
+    def on_exit(icon, item):     _do_exit()
 
     tray = pystray.Icon(
         name="TXTDrop",
@@ -278,6 +340,11 @@ def main():
             pystray.MenuItem(lambda item: t("exit"),        on_exit),
         ),
     )
+    tray_ref[0] = tray
+
+    # Replace native right-click menu with custom dark Tk menu
+    _patch_tray_dark_menu(tray, _do_settings, _do_log, _do_exit)
+
     tray.run()
 
 
