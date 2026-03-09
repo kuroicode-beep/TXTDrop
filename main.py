@@ -1,4 +1,5 @@
 import os
+import time
 import ctypes
 import datetime
 import threading
@@ -7,6 +8,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 
 import keyboard
+import pyperclip
 from PIL import Image, ImageGrab, ImageDraw
 import pystray
 
@@ -90,7 +92,6 @@ def drop_clipboard():
 
     # ── Text ─────────────────────────────────────────────────────────────────
     try:
-        import pyperclip
         text = pyperclip.paste()
         if not text or not text.strip():
             config.log_add("WARN", "save", t("save_fail_empty"))
@@ -135,7 +136,8 @@ def _ollama_check():
     if not config.get_bool("ollama_autostart"):
         config.log_add("INFO", "ollama", "자동 시작 비활성화 — 건너뜀")
         return
-    if ollama_client.is_running():
+    # is_running_cached() first call: synchronous check + fills cache for drop_clipboard()
+    if ollama_client.is_running_cached():
         models = ollama_client.list_models()
         config.log_add("INFO", "ollama",
                        f"서버 실행 중 — 모델 {len(models)}개: {', '.join(models[:3])}")
@@ -248,8 +250,9 @@ def _patch_tray_dark_menu(tray, settings_cb, log_cb, exit_cb):
                 _dark_tray_menu(settings_cb, log_cb, exit_cb)
 
         tray._on_notify = types.MethodType(_custom_on_notify, tray)
-    except Exception:
-        pass   # gracefully keep native menu on any failure
+    except Exception as e:
+        config.log_add("WARN", "startup",
+                       f"다크 트레이 메뉴 패치 실패 — 네이티브 메뉴 사용: {e}")
 
 
 # ── Tray icon ─────────────────────────────────────────────────────────────────
@@ -322,6 +325,7 @@ def main():
     def _do_exit():
         config.log_add("INFO", "startup", "TXTDrop 종료됨")
         keyboard.unhook_all()
+        time.sleep(0.1)   # allow SQLite commit to complete before process exit
         if tray_ref[0]:
             tray_ref[0].stop()
 

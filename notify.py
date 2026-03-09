@@ -75,12 +75,17 @@ def _create(title: str, body: str, on_click, level: str):
     slot = {"win": win, "h": h, "x": x, "sh": sh}
     _active.append(slot)
 
-    clicked = [False]
+    clicked    = [False]
+    _after_id  = [None]   # holds the scheduled auto-dismiss id
 
     def dismiss(evt=None):
-        if slot in _active:
-            _active.remove(slot)
-            _restack()
+        if slot not in _active:  # already dismissed — prevent double-run
+            return
+        if _after_id[0]:
+            win.after_cancel(_after_id[0])
+            _after_id[0] = None
+        _active.remove(slot)
+        _restack()
         try:
             win.destroy()
         except tk.TclError:
@@ -93,7 +98,7 @@ def _create(title: str, body: str, on_click, level: str):
         dismiss()
 
     _bind_recursive(win, on_click_evt)
-    win.after(4000, dismiss)
+    _after_id[0] = win.after(4000, dismiss)
 
 
 def _restack():

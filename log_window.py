@@ -181,11 +181,11 @@ def _create():
             count = config.log_count()
             if count != _prev_count[0]:
                 _load_log()
-            win.after(3000, _auto_refresh)
+            win.after(5000, _auto_refresh)
         except tk.TclError:
             pass   # window destroyed
 
-    win.after(3000, _auto_refresh)
+    win.after(5000, _auto_refresh)
 
     # ════════════════════════════════════════════════════
     # Tab 2 — 저장 기록

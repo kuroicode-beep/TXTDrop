@@ -122,14 +122,13 @@ def _run(root, on_save):
     ai_row.pack(fill="x", pady=3)
     tk.Label(ai_row, text=t("lbl_model"), bg=_BG, fg=_FG,
              font=("Malgun Gothic", 10), width=16, anchor="w").pack(side="left")
-    models = ollama_client.list_models()
     cb = ttk.Combobox(ai_row, textvariable=v_model,
-                      values=models, state="readonly", width=22)
+                      values=[], state="readonly", width=22)
     cb.pack(side="left")
     model_lbl = tk.Label(ai_row, text="", bg=_BG, font=("Malgun Gothic", 9))
     model_lbl.pack(side="left", padx=(8, 0))
 
-    _cached_models: list[str] = list(models)
+    _cached_models: list[str] = []
 
     def _update_model_status(*_):
         selected = v_model.get()

@@ -22,6 +22,9 @@ DEFAULTS = {
     "ollama_autostart":  "true",
 }
 
+# In-memory cache — avoids repeated DB opens for read-heavy hot path
+_cache: dict[str, str] = {}
+
 
 def _connect() -> sqlite3.Connection:
     return sqlite3.connect(DB_FILE)
@@ -53,17 +56,26 @@ def init_db():
         conn.execute(
             "DELETE FROM log WHERE logged_at < datetime('now', '-30 days')"
         )
+        # Pre-load entire config table into memory cache
+        rows = conn.execute("SELECT key, value FROM config").fetchall()
+        for k, v in rows:
+            _cache[k] = v
 
 
 def get(key: str) -> str:
+    if key in _cache:
+        return _cache[key]
     with _connect() as conn:
         row = conn.execute(
             "SELECT value FROM config WHERE key = ?", (key,)
         ).fetchone()
-    return row[0] if row else DEFAULTS.get(key, "")
+    value = row[0] if row else DEFAULTS.get(key, "")
+    _cache[key] = value
+    return value
 
 
 def set(key: str, value: str):
+    _cache[key] = value
     with _connect() as conn:
         conn.execute(
             "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
