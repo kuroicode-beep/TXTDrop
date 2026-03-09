@@ -102,9 +102,12 @@ def generate_title(text: str, model: str) -> str | None:
     """
     Ask Ollama to produce a short, file-safe title for *text*.
     Returns a sanitized string, or None on any failure.
-    Timeout reduced to 10 s for faster fallback.
+    Timeout: 20 s.
     """
+    import config
+
     resolved = resolve_model(model)
+    config.log_add("INFO", "ollama", f"제목 요청 → model={resolved}")
 
     prompt = (
         "다음 텍스트의 핵심을 3~5단어로 요약한 파일명용 짧은 제목을 만들어줘. "
@@ -125,13 +128,26 @@ def generate_title(text: str, model: str) -> str | None:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=10) as r:
+        with urllib.request.urlopen(req, timeout=20) as r:
             result = json.loads(r.read())
             if "error" in result:
+                config.log_add("WARN", "ollama", f"API 오류: {result['error']}")
                 return None
-            raw = result.get("response", "").strip()
-            return _sanitize(raw) or None
-    except Exception:
+            raw   = result.get("response", "").strip()
+            title = _sanitize(raw) or None
+            if title:
+                config.log_add("INFO", "ollama", f"제목 수신 ← \"{title}\"  (raw: \"{raw[:60]}\")")
+            else:
+                config.log_add("WARN", "ollama", f"제목 비어있음 (raw: \"{raw[:60]}\")")
+            return title
+    except urllib.error.URLError as e:
+        config.log_add("ERROR", "ollama", f"URLError: {e.reason}")
+        return None
+    except TimeoutError:
+        config.log_add("WARN", "ollama", "타임아웃 (15s)")
+        return None
+    except Exception as e:
+        config.log_add("ERROR", "ollama", f"예외: {type(e).__name__}: {e}")
         return None
 
 
