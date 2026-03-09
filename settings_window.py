@@ -144,10 +144,18 @@ def _run(root, on_save):
             model_lbl.config(text="모델 없음", fg="#f28b82")
 
     def _check_ollama_status():
-        running   = ollama_client.is_running_cached()
-        available = ollama_client.list_models()
+        # Always do a fresh check inside settings — cached value may be stale
+        running   = ollama_client.is_running()
+        available = ollama_client.list_models() if running else []
         _cached_models.clear()
-        _cached_models.extend(available)
+        if available:
+            _cached_models.extend(available)
+
+        # Also update the shared cache so rest of app sees the fresh value
+        import time as _time
+        with ollama_client._cache_lock:
+            ollama_client._cached_running = running
+            ollama_client._cache_time     = _time.monotonic()
 
         def _apply():
             try:
