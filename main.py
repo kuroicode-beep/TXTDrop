@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import ctypes
 import datetime
@@ -326,10 +327,10 @@ def main():
     def _do_exit():
         config.log_add("INFO", "startup", "TXTDrop 종료됨")
         keyboard.unhook_all()
-        time.sleep(0.1)   # allow SQLite commit to complete before process exit
+        time.sleep(0.15)  # allow SQLite commit before exit
         if tray_ref[0]:
             tray_ref[0].stop()
-        tkr.get().quit()  # stop the Tk mainloop on the main thread
+        sys.exit(0)  # force-terminate all threads (keyboard lib keeps non-daemon threads)
 
     # pystray native-menu callbacks (keep for fallback / accessibility)
     def on_settings(icon, item): _do_settings()
