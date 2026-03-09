@@ -141,7 +141,7 @@ def _run(root, on_save):
             model_lbl.config(text="모델 없음", fg="#f28b82")
 
     def _check_ollama_status():
-        running   = ollama_client.is_running()
+        running   = ollama_client.is_running_cached()
         available = ollama_client.list_models()
         _cached_models.clear()
         _cached_models.extend(available)

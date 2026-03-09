@@ -169,6 +169,13 @@ def _ollama_check():
             creationflags=subprocess.CREATE_NO_WINDOW,
         )
         config.log_add("INFO", "ollama", "ollama serve 백그라운드 시작됨")
+
+        def _wait_and_refresh():
+            time.sleep(3)
+            ollama_client._refresh_cache()
+            config.log_add("INFO", "ollama",
+                           f"캐시 갱신 완료 — 실행 중: {ollama_client._cached_running}")
+        threading.Thread(target=_wait_and_refresh, daemon=True).start()
     else:
         config.log_add("INFO", "ollama", "사용자가 Ollama 시작 취소")
 

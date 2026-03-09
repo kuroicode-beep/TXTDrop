@@ -2,7 +2,7 @@
 log_window.py — TXTDrop log history viewer.
 
 Two tabs:
-  [로그]        — colour-coded log stream, auto-refreshes every 3 s
+  [로그]        — colour-coded log stream, auto-refreshes every 5 s
   [저장 기록]   — Treeview of saved files, double-click opens the file
 """
 import os
@@ -151,11 +151,11 @@ def _create():
         txt.tag_config(f"cat_{cat}", foreground=col)
     txt.tag_config("cat_default", foreground=_CAT_DEFAULT)
 
-    _prev_count = [0]
+    _last_log_id = [0]
 
     def _load_log():
         entries = config.log_get(1000)
-        _prev_count[0] = len(entries)
+        _last_log_id[0] = config.log_last_id()
         txt.config(state="normal")
         txt.delete("1.0", "end")
         if not entries:
@@ -178,8 +178,8 @@ def _create():
 
     def _auto_refresh():
         try:
-            count = config.log_count()
-            if count != _prev_count[0]:
+            latest = config.log_last_id()
+            if latest != _last_log_id[0]:
                 _load_log()
             win.after(5000, _auto_refresh)
         except tk.TclError:

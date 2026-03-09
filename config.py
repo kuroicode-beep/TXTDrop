@@ -120,6 +120,12 @@ def log_count() -> int:
         return conn.execute("SELECT COUNT(*) FROM log").fetchone()[0]
 
 
+def log_last_id() -> int:
+    with _connect() as conn:
+        row = conn.execute("SELECT MAX(id) FROM log").fetchone()
+        return row[0] or 0
+
+
 def log_get(limit: int = 500) -> list[dict]:
     with _connect() as conn:
         rows = conn.execute(
@@ -158,6 +164,7 @@ def restore_db(src_path: str):
         src.backup(dst)
     src.close()
     dst.close()
+    _cache.clear()
 
 
 def history_get(limit: int = 500) -> list[dict]:
