@@ -291,23 +291,16 @@ def _setup_sleep_wake_handler(hotkey_state):
 # ── First run ─────────────────────────────────────────────────────────────────
 
 def _first_run() -> bool:
-    result = [None]
-    event  = threading.Event()
-
-    def _do():
-        tmp = tk.Toplevel(tkr.get())
-        tmp.withdraw()
-        tmp.attributes("-topmost", True)
-        messagebox.showinfo(t("first_run_title"), t("first_run_msg"), parent=tmp)
-        folder = filedialog.askdirectory(title=t("select_folder"), parent=tmp)
-        tmp.destroy()
-        result[0] = folder
-        event.set()
-
-    tkr.call_on_main(_do)
-    event.wait()
-
-    folder = result[0]
+    """
+    Called from the main thread BEFORE mainloop() starts.
+    messagebox / filedialog run their own internal event loops, so
+    direct Tk calls are safe here — no call_on_main / event.wait() needed.
+    """
+    root = tkr.get()
+    root.attributes("-topmost", True)
+    messagebox.showinfo(t("first_run_title"), t("first_run_msg"), parent=root)
+    folder = filedialog.askdirectory(title=t("select_folder"), parent=root)
+    root.attributes("-topmost", False)
     if not folder:
         return False
     config.set("text_save_folder",  folder)
@@ -406,11 +399,23 @@ def main():
 
     # Register hotkey
     hotkey_state = {"current": config.get("hotkey") or "ctrl+shift+z"}
-    keyboard.add_hotkey(
-        hotkey_state["current"],
-        lambda: threading.Thread(target=drop_clipboard, daemon=True).start(),
-    )
-    config.log_add("INFO", "startup", f"단축키 등록: {hotkey_state['current']}")
+    try:
+        keyboard.add_hotkey(
+            hotkey_state["current"],
+            lambda: threading.Thread(target=drop_clipboard, daemon=True).start(),
+        )
+        config.log_add("INFO", "startup", f"단축키 등록: {hotkey_state['current']}")
+    except Exception as e:
+        config.log_add("ERROR", "startup", f"단축키 등록 실패: {e}")
+        hotkey_state["current"] = "ctrl+shift+z"
+        try:
+            keyboard.add_hotkey(
+                hotkey_state["current"],
+                lambda: threading.Thread(target=drop_clipboard, daemon=True).start(),
+            )
+            config.log_add("INFO", "startup", f"기본 단축키로 재등록: {hotkey_state['current']}")
+        except Exception as e2:
+            config.log_add("ERROR", "startup", f"기본 단축키도 등록 실패: {e2}")
 
     # Sleep / wake handler — must be after tkr.init()
     _setup_sleep_wake_handler(hotkey_state)
@@ -427,13 +432,16 @@ def main():
                     keyboard.remove_hotkey(hotkey_state["current"])
                 except Exception:
                     pass
-                keyboard.add_hotkey(
-                    new_hk,
-                    lambda: threading.Thread(target=drop_clipboard, daemon=True).start(),
-                )
-                config.log_add("INFO", "startup",
-                               f"단축키 변경: {hotkey_state['current']} → {new_hk}")
-                hotkey_state["current"] = new_hk
+                try:
+                    keyboard.add_hotkey(
+                        new_hk,
+                        lambda: threading.Thread(target=drop_clipboard, daemon=True).start(),
+                    )
+                    config.log_add("INFO", "startup",
+                                   f"단축키 변경: {hotkey_state['current']} → {new_hk}")
+                    hotkey_state["current"] = new_hk
+                except Exception as e:
+                    config.log_add("ERROR", "startup", f"단축키 변경 실패: {e}")
         settings_window.open_settings(on_save=on_save)
 
     def _do_log():
