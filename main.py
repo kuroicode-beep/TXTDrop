@@ -1,6 +1,8 @@
 import os
+import re
 import time
 import ctypes
+import ctypes.wintypes
 import datetime
 import threading
 import subprocess
@@ -28,8 +30,19 @@ def _timestamp() -> str:
     return datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
+def _clip_title(text: str) -> str:
+    """Extract a file-safe title from the first non-empty line of clipboard text."""
+    for line in text.splitlines():
+        line = line.strip()
+        if line:
+            line = re.sub(r'[\\/:*?"<>|]', '', line)   # Windows-illegal chars
+            line = re.sub(r'\s+', '-', line).strip('-')
+            return line[:40]
+    return ""
+
+
 def _text_filename(text: str, ollama_running: bool) -> str:
-    """Build filename.  Uses AI title only when ollama_running is True."""
+    """Build filename.  AI title when Ollama is up, else first line of clipboard."""
     prefix = config.get("filename_prefix") or "txtdrop"
     ts     = _timestamp()
     if ollama_running:
@@ -37,6 +50,10 @@ def _text_filename(text: str, ollama_running: bool) -> str:
         title = ollama_client.generate_title(text, model)
         if title:
             return f"{prefix}_{title}_{ts}.txt"
+    # Fallback: first line of clipboard text
+    clip = _clip_title(text)
+    if clip:
+        return f"{prefix}_{clip}_{ts}.txt"
     return f"{prefix}_{ts}.txt"
 
 
@@ -131,24 +148,18 @@ def drop_clipboard():
                           on_click=log_window.open_log, level="error")
 
 
-# ── Ollama autostart check ────────────────────────────────────────────────────
+# ── Ollama startup check (always silent) ─────────────────────────────────────
 
 def _ollama_check():
+    """On startup: check Ollama, silently start if needed. No toasts."""
     config.log_add("INFO", "ollama", "서버 상태 확인 중…")
-    if not config.get_bool("ollama_autostart"):
-        config.log_add("INFO", "ollama", "자동 시작 비활성화 — 건너뜀")
-        return
-
-    # is_running_cached() first call: synchronous check + fills cache for drop_clipboard()
     if ollama_client.is_running_cached():
         models = ollama_client.list_models()
         config.log_add("INFO", "ollama",
                        f"서버 실행 중 — 모델 {len(models)}개: {', '.join(models[:3])}")
         return
 
-    # Auto-start without prompting — user already opted in via the setting
     config.log_add("INFO", "ollama", "서버 미실행 — 자동 시작 시도")
-    notify.show_toast("Ollama", t("ollama_starting"), level="info")
     try:
         subprocess.Popen(
             ["ollama", "serve"],
@@ -156,23 +167,125 @@ def _ollama_check():
             stderr=subprocess.DEVNULL,
             creationflags=subprocess.CREATE_NO_WINDOW,
         )
-        config.log_add("INFO", "ollama", "ollama serve 백그라운드 시작됨")
+        config.log_add("INFO", "ollama", "ollama serve 시작됨")
     except FileNotFoundError:
-        config.log_add("WARN", "ollama", "ollama 명령을 찾을 수 없음 — 설치 확인 필요")
-        notify.show_toast("Ollama", t("ollama_not_found"), level="error")
+        config.log_add("INFO", "ollama", "ollama 미설치 — 건너뜀")
         return
 
     def _wait_and_refresh():
-        time.sleep(5)   # ollama takes a few seconds to be ready
+        time.sleep(5)
         ollama_client._refresh_cache()
         if ollama_client._cached_running:
             models = ollama_client.list_models()
             config.log_add("INFO", "ollama",
                            f"자동 시작 완료 — 모델 {len(models)}개: {', '.join(models[:3])}")
-            notify.show_toast("Ollama", t("ollama_started"), level="info")
         else:
             config.log_add("WARN", "ollama", "자동 시작 후 서버 응답 없음")
     threading.Thread(target=_wait_and_refresh, daemon=True).start()
+
+
+# ── Ollama manual refresh (from tray menu) ────────────────────────────────────
+
+def _do_ollama_refresh():
+    """Check Ollama status from tray; start if needed; notify user."""
+    def _check():
+        running = ollama_client.is_running()
+        with ollama_client._cache_lock:
+            ollama_client._cached_running = running
+            ollama_client._cache_time     = time.monotonic()
+
+        if running:
+            models = ollama_client.list_models()
+            config.log_add("INFO", "ollama", f"수동 확인 — 실행 중, 모델 {len(models)}개")
+            notify.show_toast("Ollama", t("ollama_running_models", n=len(models)), level="info")
+            return
+
+        # Not running — try to start
+        config.log_add("INFO", "ollama", "수동 시작 시도")
+        notify.show_toast("Ollama", t("ollama_starting"), level="info")
+        try:
+            subprocess.Popen(
+                ["ollama", "serve"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+        except FileNotFoundError:
+            config.log_add("WARN", "ollama", "ollama 미설치")
+            notify.show_toast("Ollama", t("ollama_install_notice"), level="error")
+            return
+
+        time.sleep(5)
+        ollama_client._refresh_cache()
+        if ollama_client._cached_running:
+            models = ollama_client.list_models()
+            config.log_add("INFO", "ollama", f"수동 시작 완료 — 모델 {len(models)}개")
+            notify.show_toast("Ollama", t("ollama_started"), level="info")
+        else:
+            config.log_add("WARN", "ollama", "수동 시작 후 서버 응답 없음")
+            notify.show_toast("Ollama", t("ollama_no_response"), level="error")
+
+    threading.Thread(target=_check, daemon=True).start()
+
+
+# ── Sleep / wake handler ──────────────────────────────────────────────────────
+
+# Module-level ref keeps the ctypes callback alive (prevents GC crash)
+_power_wndproc_ref = None
+
+
+def _setup_sleep_wake_handler(hotkey_state):
+    """
+    Subclass the hidden Tk root window to receive WM_POWERBROADCAST.
+    On resume from sleep: re-register the hotkey and refresh Ollama cache.
+    """
+    global _power_wndproc_ref
+
+    WM_POWERBROADCAST      = 0x0218
+    PBT_APMRESUMESUSPEND   = 0x0007   # user-visible resume
+    PBT_APMRESUMEAUTOMATIC = 0x0012   # automatic resume
+    GWL_WNDPROC            = -4
+
+    WNDPROCTYPE = ctypes.WINFUNCTYPE(
+        ctypes.c_ssize_t,
+        ctypes.wintypes.HWND,
+        ctypes.c_uint,
+        ctypes.wintypes.WPARAM,
+        ctypes.wintypes.LPARAM,
+    )
+
+    def on_resume():
+        config.log_add("INFO", "system", "절전 해제 — 단축키 재등록 중")
+        try:
+            keyboard.remove_hotkey(hotkey_state["current"])
+        except Exception:
+            pass
+        try:
+            keyboard.add_hotkey(
+                hotkey_state["current"],
+                lambda: threading.Thread(target=drop_clipboard, daemon=True).start(),
+            )
+            config.log_add("INFO", "system", f"단축키 재등록: {hotkey_state['current']}")
+        except Exception as e:
+            config.log_add("WARN", "system", f"단축키 재등록 실패: {e}")
+        ollama_client._refresh_cache()
+
+    try:
+        hwnd     = tkr.get().winfo_id()
+        orig_ptr = ctypes.windll.user32.GetWindowLongPtrW(hwnd, GWL_WNDPROC)
+
+        def new_wndproc(hwnd, msg, wparam, lparam):
+            if msg == WM_POWERBROADCAST and wparam in (
+                    PBT_APMRESUMESUSPEND, PBT_APMRESUMEAUTOMATIC):
+                threading.Thread(target=on_resume, daemon=True).start()
+            return ctypes.windll.user32.CallWindowProcW(
+                orig_ptr, hwnd, msg, wparam, lparam)
+
+        _power_wndproc_ref = WNDPROCTYPE(new_wndproc)
+        ctypes.windll.user32.SetWindowLongPtrW(hwnd, GWL_WNDPROC, _power_wndproc_ref)
+        config.log_add("INFO", "startup", "절전/해제 핸들러 등록됨")
+    except Exception as e:
+        config.log_add("WARN", "startup", f"절전 핸들러 등록 실패: {e}")
 
 
 # ── First run ─────────────────────────────────────────────────────────────────
@@ -203,9 +316,9 @@ def _first_run() -> bool:
     return True
 
 
-# ── Dark tray menu ───────────────────────────────────────────────────────────
+# ── Dark tray menu ────────────────────────────────────────────────────────────
 
-def _dark_tray_menu(settings_cb, log_cb, exit_cb):
+def _dark_tray_menu(settings_cb, log_cb, ollama_cb, exit_cb):
     """Show a custom dark Tk popup menu at the current cursor position."""
     class _POINT(ctypes.Structure):
         _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
@@ -223,20 +336,20 @@ def _dark_tray_menu(settings_cb, log_cb, exit_cb):
             bd=0, relief="flat",
             activeborderwidth=0,
         )
-        menu.add_command(label=t("settings"),    command=settings_cb)
-        menu.add_command(label=t("log_history"), command=log_cb)
+        menu.add_command(label=t("settings"),           command=settings_cb)
+        menu.add_command(label=t("log_history"),        command=log_cb)
+        menu.add_command(label=t("tray_ollama_refresh"), command=ollama_cb)
         menu.add_separator()
-        menu.add_command(label=t("exit"),        command=exit_cb)
+        menu.add_command(label=t("exit"),               command=exit_cb)
         menu.tk_popup(cx, cy)
 
     tkr.call_on_main(_popup)
 
 
-def _patch_tray_dark_menu(tray, settings_cb, log_cb, exit_cb):
+def _patch_tray_dark_menu(tray, settings_cb, log_cb, ollama_cb, exit_cb):
     """
     Monkey-patch pystray's WM_RBUTTONUP handler to show a custom dark menu
-    instead of the native Windows popup.  Falls back silently if pystray's
-    internals have changed.
+    instead of the native Windows popup.
     """
     try:
         import types
@@ -247,9 +360,9 @@ def _patch_tray_dark_menu(tray, settings_cb, log_cb, exit_cb):
 
         def _custom_on_notify(self, wparam, lparam):
             if lparam == WM_LBUTTONUP:
-                self()   # default left-click action
+                self()
             elif lparam == WM_RBUTTONUP:
-                _dark_tray_menu(settings_cb, log_cb, exit_cb)
+                _dark_tray_menu(settings_cb, log_cb, ollama_cb, exit_cb)
 
         tray._on_notify = types.MethodType(_custom_on_notify, tray)
     except Exception as e:
@@ -280,7 +393,7 @@ def main():
     # Create the shared Tk root on the main thread (mainloop runs here later)
     tkr.init()
 
-    config.log_add("INFO", "startup", "TXTDrop 시작됨")
+    config.log_add("INFO", "startup", "TXTDrop v0.6 시작됨")
 
     # First-run folder setup (uses tkr event loop)
     if not config.get("text_save_folder"):
@@ -288,7 +401,7 @@ def main():
             config.log_add("WARN", "startup", "첫 실행 폴더 선택 취소 — 종료")
             return
 
-    # Ollama check in background
+    # Ollama check in background (always silent)
     threading.Thread(target=_ollama_check, daemon=True).start()
 
     # Register hotkey
@@ -299,9 +412,12 @@ def main():
     )
     config.log_add("INFO", "startup", f"단축키 등록: {hotkey_state['current']}")
 
+    # Sleep / wake handler — must be after tkr.init()
+    _setup_sleep_wake_handler(hotkey_state)
+
     # ── Tray callbacks ────────────────────────────────────────────────────────
 
-    tray_ref = [None]   # filled after tray creation
+    tray_ref = [None]
 
     def _do_settings():
         def on_save():
@@ -326,35 +442,33 @@ def main():
     def _do_exit():
         config.log_add("INFO", "startup", "TXTDrop 종료됨")
         keyboard.unhook_all()
-        time.sleep(0.15)  # allow SQLite commit before exit
+        time.sleep(0.15)
         if tray_ref[0]:
             tray_ref[0].stop()
-        os._exit(0)  # OS-level kill: bypasses Tkinter exception swallowing, kills all threads
+        os._exit(0)
 
-    # pystray native-menu callbacks (keep for fallback / accessibility)
-    def on_settings(icon, item): _do_settings()
-    def on_log(icon, item):      _do_log()
-    def on_exit(icon, item):     _do_exit()
+    # pystray native-menu callbacks (fallback)
+    def on_settings(icon, item):    _do_settings()
+    def on_log(icon, item):         _do_log()
+    def on_ollama(icon, item):      _do_ollama_refresh()
+    def on_exit(icon, item):        _do_exit()
 
     tray = pystray.Icon(
         name="TXTDrop",
         icon=_make_icon(),
         title="TXTDrop",
         menu=pystray.Menu(
-            pystray.MenuItem(lambda item: t("settings"),    on_settings),
-            pystray.MenuItem(lambda item: t("log_history"), on_log),
-            pystray.MenuItem(lambda item: t("exit"),        on_exit),
+            pystray.MenuItem(lambda item: t("settings"),           on_settings),
+            pystray.MenuItem(lambda item: t("log_history"),        on_log),
+            pystray.MenuItem(lambda item: t("tray_ollama_refresh"), on_ollama),
+            pystray.MenuItem(lambda item: t("exit"),               on_exit),
         ),
     )
     tray_ref[0] = tray
 
-    # Replace native right-click menu with custom dark Tk menu
-    _patch_tray_dark_menu(tray, _do_settings, _do_log, _do_exit)
+    _patch_tray_dark_menu(tray, _do_settings, _do_log, _do_ollama_refresh, _do_exit)
 
-    # Run pystray in a background thread so the main thread can own mainloop()
     tray.run_detached()
-
-    # Block the main thread with the Tk event loop — required on Windows
     tkr.get().mainloop()
 
 

@@ -27,6 +27,10 @@ _STRINGS: dict[str, dict[str, str]] = {
         "ollama_starting":    "Ollama 서버를 시작하는 중…",
         "ollama_started":     "Ollama 서버가 준비됐습니다.",
         "ollama_not_found":   "ollama 명령을 찾을 수 없습니다. 설치를 확인해 주세요.",
+        "ollama_install_notice": "Ollama가 설치되어 있지 않습니다.\nollama.ai에서 설치해 주세요.",
+        "tray_ollama_refresh": "Ollama 새로고침",
+        "ollama_running_models": "실행 중 — {n}개 모델",
+        "ollama_no_response": "서버 응답 없음",
         # settings sections
         "sec_folders":        "저장 폴더",
         "sec_filename":       "파일명",
@@ -102,6 +106,10 @@ _STRINGS: dict[str, dict[str, str]] = {
         "ollama_starting":    "Starting Ollama server…",
         "ollama_started":     "Ollama server is ready.",
         "ollama_not_found":   "ollama command not found. Please check your installation.",
+        "ollama_install_notice": "Ollama is not installed.\nPlease install it from ollama.ai.",
+        "tray_ollama_refresh": "Refresh Ollama",
+        "ollama_running_models": "Running — {n} model(s)",
+        "ollama_no_response": "No server response",
         # settings sections
         "sec_folders":        "Save Folders",
         "sec_filename":       "Filename",

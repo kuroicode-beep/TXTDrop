@@ -1,6 +1,6 @@
 [Setup]
 AppName=TXTDrop
-AppVersion=0.4
+AppVersion=0.6
 AppPublisher=SVIL — Singularity Visual Intelligence Lab
 AppPublisherURL=https://github.com/kuroicode-beep/TXTDrop
 DefaultDirName={autopf}\TXTDrop
