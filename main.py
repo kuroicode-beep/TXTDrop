@@ -152,14 +152,14 @@ def drop_clipboard():
 
 def _ollama_check():
     """On startup: check Ollama, silently start if needed. No toasts."""
-    config.log_add("INFO", "ollama", "서버 상태 확인 중…")
+    config.log_add("INFO", "ollama", "서버 상태 확인 중...")
     if ollama_client.is_running_cached():
         models = ollama_client.list_models()
         config.log_add("INFO", "ollama",
-                       f"서버 실행 중 — 모델 {len(models)}개: {', '.join(models[:3])}")
+                       f"서버 실행 중 - 모델 {len(models)}개: {', '.join(models[:3])}")
         return
 
-    config.log_add("INFO", "ollama", "서버 미실행 — 자동 시작 시도")
+    config.log_add("INFO", "ollama", "서버 미실행 - 자동 시작 시도")
     try:
         subprocess.Popen(
             ["ollama", "serve"],
@@ -169,7 +169,7 @@ def _ollama_check():
         )
         config.log_add("INFO", "ollama", "ollama serve 시작됨")
     except FileNotFoundError:
-        config.log_add("INFO", "ollama", "ollama 미설치 — 건너뜀")
+        config.log_add("INFO", "ollama", "ollama 미설치 - 건너뜀")
         return
 
     def _wait_and_refresh():
@@ -178,7 +178,7 @@ def _ollama_check():
         if ollama_client._cached_running:
             models = ollama_client.list_models()
             config.log_add("INFO", "ollama",
-                           f"자동 시작 완료 — 모델 {len(models)}개: {', '.join(models[:3])}")
+                           f"자동 시작 완료 - 모델 {len(models)}개: {', '.join(models[:3])}")
         else:
             config.log_add("WARN", "ollama", "자동 시작 후 서버 응답 없음")
     threading.Thread(target=_wait_and_refresh, daemon=True).start()
@@ -196,7 +196,7 @@ def _do_ollama_refresh():
 
         if running:
             models = ollama_client.list_models()
-            config.log_add("INFO", "ollama", f"수동 확인 — 실행 중, 모델 {len(models)}개")
+            config.log_add("INFO", "ollama", f"수동 확인 - 실행 중, 모델 {len(models)}개")
             notify.show_toast("Ollama", t("ollama_running_models", n=len(models)), level="info")
             return
 
@@ -219,7 +219,7 @@ def _do_ollama_refresh():
         ollama_client._refresh_cache()
         if ollama_client._cached_running:
             models = ollama_client.list_models()
-            config.log_add("INFO", "ollama", f"수동 시작 완료 — 모델 {len(models)}개")
+            config.log_add("INFO", "ollama", f"수동 시작 완료 - 모델 {len(models)}개")
             notify.show_toast("Ollama", t("ollama_started"), level="info")
         else:
             config.log_add("WARN", "ollama", "수동 시작 후 서버 응답 없음")
@@ -230,62 +230,15 @@ def _do_ollama_refresh():
 
 # ── Sleep / wake handler ──────────────────────────────────────────────────────
 
-# Module-level ref keeps the ctypes callback alive (prevents GC crash)
-_power_wndproc_ref = None
-
-
 def _setup_sleep_wake_handler(hotkey_state):
     """
-    Subclass the hidden Tk root window to receive WM_POWERBROADCAST.
-    On resume from sleep: re-register the hotkey and refresh Ollama cache.
+    No-op placeholder.  Power-broadcast handling is intentionally disabled
+    because registering a custom WNDPROC or message-only window via ctypes
+    causes STATUS_STACK_BUFFER_OVERRUN crashes inside PyInstaller's frozen
+    runtime on 64-bit Windows.  The hotkey stays registered across sleep/wake
+    through Windows' normal keyboard hook persistence.
     """
-    global _power_wndproc_ref
-
-    WM_POWERBROADCAST      = 0x0218
-    PBT_APMRESUMESUSPEND   = 0x0007   # user-visible resume
-    PBT_APMRESUMEAUTOMATIC = 0x0012   # automatic resume
-    GWL_WNDPROC            = -4
-
-    WNDPROCTYPE = ctypes.WINFUNCTYPE(
-        ctypes.c_ssize_t,
-        ctypes.wintypes.HWND,
-        ctypes.c_uint,
-        ctypes.wintypes.WPARAM,
-        ctypes.wintypes.LPARAM,
-    )
-
-    def on_resume():
-        config.log_add("INFO", "system", "절전 해제 — 단축키 재등록 중")
-        try:
-            keyboard.remove_hotkey(hotkey_state["current"])
-        except Exception:
-            pass
-        try:
-            keyboard.add_hotkey(
-                hotkey_state["current"],
-                lambda: threading.Thread(target=drop_clipboard, daemon=True).start(),
-            )
-            config.log_add("INFO", "system", f"단축키 재등록: {hotkey_state['current']}")
-        except Exception as e:
-            config.log_add("WARN", "system", f"단축키 재등록 실패: {e}")
-        ollama_client._refresh_cache()
-
-    try:
-        hwnd     = tkr.get().winfo_id()
-        orig_ptr = ctypes.windll.user32.GetWindowLongPtrW(hwnd, GWL_WNDPROC)
-
-        def new_wndproc(hwnd, msg, wparam, lparam):
-            if msg == WM_POWERBROADCAST and wparam in (
-                    PBT_APMRESUMESUSPEND, PBT_APMRESUMEAUTOMATIC):
-                threading.Thread(target=on_resume, daemon=True).start()
-            return ctypes.windll.user32.CallWindowProcW(
-                orig_ptr, hwnd, msg, wparam, lparam)
-
-        _power_wndproc_ref = WNDPROCTYPE(new_wndproc)
-        ctypes.windll.user32.SetWindowLongPtrW(hwnd, GWL_WNDPROC, _power_wndproc_ref)
-        config.log_add("INFO", "startup", "절전/해제 핸들러 등록됨")
-    except Exception as e:
-        config.log_add("WARN", "startup", f"절전 핸들러 등록 실패: {e}")
+    config.log_add("INFO", "startup", "절전 핸들러: 비활성화됨 (안정성 우선)")
 
 
 # ── First run ─────────────────────────────────────────────────────────────────
@@ -305,7 +258,7 @@ def _first_run() -> bool:
         return False
     config.set("text_save_folder",  folder)
     config.set("image_save_folder", folder)
-    config.log_add("INFO", "startup", f"첫 실행 — 저장 폴더 설정: {folder}")
+    config.log_add("INFO", "startup", f"첫 실행 - 저장 폴더 설정: {folder}")
     return True
 
 
@@ -360,7 +313,7 @@ def _patch_tray_dark_menu(tray, settings_cb, log_cb, ollama_cb, exit_cb):
         tray._on_notify = types.MethodType(_custom_on_notify, tray)
     except Exception as e:
         config.log_add("WARN", "startup",
-                       f"다크 트레이 메뉴 패치 실패 — 네이티브 메뉴 사용: {e}")
+                       f"다크 트레이 메뉴 패치 실패 - 네이티브 메뉴 사용: {e}")
 
 
 # ── Tray icon ─────────────────────────────────────────────────────────────────
@@ -391,7 +344,7 @@ def main():
     # First-run folder setup (uses tkr event loop)
     if not config.get("text_save_folder"):
         if not _first_run():
-            config.log_add("WARN", "startup", "첫 실행 폴더 선택 취소 — 종료")
+            config.log_add("WARN", "startup", "첫 실행 폴더 선택 취소 - 종료")
             return
 
     # Ollama check in background (always silent)
@@ -438,7 +391,7 @@ def main():
                         lambda: threading.Thread(target=drop_clipboard, daemon=True).start(),
                     )
                     config.log_add("INFO", "startup",
-                                   f"단축키 변경: {hotkey_state['current']} → {new_hk}")
+                                   f"단축키 변경: {hotkey_state['current']} -> {new_hk}")
                     hotkey_state["current"] = new_hk
                 except Exception as e:
                     config.log_add("ERROR", "startup", f"단축키 변경 실패: {e}")

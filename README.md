@@ -9,11 +9,11 @@ Runs in the system tray. Press a hotkey. Clipboard is saved.
 
 | Clipboard | Hotkey | Result |
 |-----------|--------|--------|
-| Text | `CTRL + SHIFT + Z` | `txtdrop_YYYYMMDD_HHMMSS.txt` |
+| Text | `CTRL + SHIFT + Z` | `txtdrop_<title>_YYYYMMDD_HHMMSS.txt` |
 | Image | `CTRL + SHIFT + Z` | `txtdrop_YYYYMMDD_HHMMSS.png` |
 | Empty | `CTRL + SHIFT + Z` | Nothing happens |
 
-Right-click the tray icon to **Change Folder** or **Exit**.
+Right-click the tray icon to access **Settings**, **Log**, **Ollama refresh**, or **Exit**.
 
 ---
 
@@ -22,17 +22,17 @@ Right-click the tray icon to **Change Folder** or **Exit**.
 ### 1. Install dependencies
 
 ```
-pip install -r requirements.txt
+py -3.12 -m pip install -r requirements.txt
 ```
 
 ### 2. Run directly
 
 ```
-python main.py
+py -3.12 main.py
 ```
 
 On first launch a folder selection dialog appears.  
-The chosen path is saved to `config.json` next to the executable.
+The chosen path is saved to `txtdrop.db` (SQLite) next to the executable.
 
 ---
 
@@ -41,7 +41,7 @@ The chosen path is saved to `config.json` next to the executable.
 Requires [PyInstaller](https://pyinstaller.org/):
 
 ```
-pip install pyinstaller
+py -3.12 -m pip install pyinstaller
 ```
 
 Then run the build script:
@@ -50,13 +50,13 @@ Then run the build script:
 build.bat
 ```
 
-Output: `dist\TXTDrop.exe`
+Output: `dist\TXTDrop\TXTDrop.exe`
 
 The script automatically generates `icon.ico` before building.  
 To generate the icon separately:
 
 ```
-python create_icon.py
+py -3.12 create_icon.py
 ```
 
 ---
@@ -65,13 +65,12 @@ python create_icon.py
 
 1. Build the executable first (`build.bat`)
 2. Install [Inno Setup](https://jrsoftware.org/isinfo.php)
-3. Open `installer.iss` in Inno Setup Compiler
-4. Click **Build → Compile**
+3. Run `build.bat` — it calls Inno Setup automatically if installed
 
 Output: `Output\TXTDropSetup.exe`
 
 The installer:
-- Installs `TXTDrop.exe` to `Program Files`
+- Installs `TXTDrop\` folder to `%LocalAppData%\Programs`
 - Creates a Start Menu entry
 - Optionally adds a Windows startup registry entry
 
@@ -82,8 +81,11 @@ The installer:
 | File | Description |
 |------|-------------|
 | `main.py` | Application entry point |
+| `config.py` | Settings & log persistence (SQLite) |
+| `ollama_client.py` | Ollama API integration for AI filenames |
 | `create_icon.py` | Generates `icon.ico` for the build |
 | `requirements.txt` | Python dependencies |
-| `build.bat` | Builds `dist\TXTDrop.exe` |
+| `TXTDrop.spec` | PyInstaller build spec (onedir) |
+| `build.bat` | Full build pipeline (icon → PyInstaller → Inno Setup) |
 | `installer.iss` | Inno Setup installer script |
-| `config.json` | Created at runtime — stores save folder path |
+| `txtdrop.db` | Created at runtime — stores settings, history, logs |

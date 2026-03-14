@@ -12,24 +12,24 @@ echo.
 :: Step 1 — Generate icon.ico
 :: -------------------------------------------------------
 echo [1/3] Generating icon...
-python create_icon.py
+py -3.12 create_icon.py
 if errorlevel 1 (
     echo.
     echo  ERROR: Icon generation failed.
-    echo  Make sure Pillow is installed: pip install Pillow
+    echo  Make sure Pillow is installed: py -3.12 -m pip install Pillow
     goto :fail
 )
 
 :: -------------------------------------------------------
-:: Step 2 — Build TXTDrop.exe with PyInstaller
+:: Step 2 — Build TXTDrop with PyInstaller (uses TXTDrop.spec)
 :: -------------------------------------------------------
 echo.
 echo [2/3] Building executable with PyInstaller...
-pyinstaller --noconsole --onefile --icon icon.ico --name TXTDrop main.py --clean --hidden-import winsound
+py -3.12 -m PyInstaller TXTDrop.spec --clean
 if errorlevel 1 (
     echo.
     echo  ERROR: PyInstaller build failed.
-    echo  Make sure PyInstaller is installed: pip install pyinstaller
+    echo  Make sure PyInstaller is installed: py -3.12 -m pip install pyinstaller
     goto :fail
 )
 
@@ -74,7 +74,7 @@ echo  =============================
 echo   BUILD COMPLETE
 echo  =============================
 echo   Installer : Output\TXTDropSetup.exe
-echo   Executable: dist\TXTDrop.exe
+echo   Executable: dist\TXTDrop\TXTDrop.exe
 echo  =============================
 echo.
 pause
@@ -84,7 +84,7 @@ exit /b 0
 echo  =============================
 echo   BUILD COMPLETE (exe only)
 echo  =============================
-echo   Executable: dist\TXTDrop.exe
+echo   Executable: dist\TXTDrop\TXTDrop.exe
 echo  =============================
 echo.
 pause

@@ -149,10 +149,12 @@ def backup_db(dest_folder: str) -> str:
     dest = os.path.join(dest_folder, f"txtdrop_backup_{ts}.db")
     src  = _connect()
     dst  = sqlite3.connect(dest)
-    with dst:
-        src.backup(dst)
-    dst.close()
-    src.close()
+    try:
+        with dst:
+            src.backup(dst)
+    finally:
+        dst.close()
+        src.close()
     return dest
 
 
@@ -160,10 +162,12 @@ def restore_db(src_path: str):
     """Overwrite live DB with a backup file."""
     src = sqlite3.connect(src_path)
     dst = _connect()
-    with dst:
-        src.backup(dst)
-    src.close()
-    dst.close()
+    try:
+        with dst:
+            src.backup(dst)
+    finally:
+        src.close()
+        dst.close()
     _cache.clear()
 
 

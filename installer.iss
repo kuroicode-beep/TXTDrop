@@ -23,7 +23,7 @@ Name: "korean";  MessagesFile: "compiler:Languages\Korean.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
-Source: "dist\TXTDrop.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "dist\TXTDrop\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\TXTDrop";           Filename: "{app}\TXTDrop.exe"

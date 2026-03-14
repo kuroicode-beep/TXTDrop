@@ -144,7 +144,7 @@ def generate_title(text: str, model: str) -> str | None:
         config.log_add("ERROR", "ollama", f"URLError: {e.reason}")
         return None
     except TimeoutError:
-        config.log_add("WARN", "ollama", "타임아웃 (15s)")
+        config.log_add("WARN", "ollama", "타임아웃 (20s)")
         return None
     except Exception as e:
         config.log_add("ERROR", "ollama", f"예외: {type(e).__name__}: {e}")

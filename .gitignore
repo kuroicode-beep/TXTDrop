@@ -2,6 +2,5 @@ build/
 dist/
 Output/
 __pycache__/
-*.spec
-config.json
+TXTDropDebug.spec
 txtdrop.db
