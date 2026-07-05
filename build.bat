@@ -25,13 +25,19 @@ if errorlevel 1 (
 :: -------------------------------------------------------
 echo.
 echo [2/3] Building executable with PyInstaller...
-py -3.12 -m PyInstaller TXTDrop.spec --clean
+set "PYI_WORK=%TEMP%\TXTDrop-pyi-work-%RANDOM%%RANDOM%"
+if exist "build\TXTDrop" attrib -R "build\TXTDrop" /d >nul 2>nul
+if exist "build\TXTDrop" attrib -R "build\TXTDrop\*" /s /d >nul 2>nul
+if exist "dist\TXTDrop" attrib -R "dist\TXTDrop" /d >nul 2>nul
+if exist "dist\TXTDrop" attrib -R "dist\TXTDrop\*" /s /d >nul 2>nul
+py -3.12 -m PyInstaller TXTDrop.spec --clean --noconfirm --workpath "%PYI_WORK%"
 if errorlevel 1 (
     echo.
     echo  ERROR: PyInstaller build failed.
     echo  Make sure PyInstaller is installed: py -3.12 -m pip install pyinstaller
     goto :fail
 )
+if exist "%PYI_WORK%" rmdir /s /q "%PYI_WORK%" >nul 2>nul
 
 :: -------------------------------------------------------
 :: Step 3 — Compile installer with Inno Setup
@@ -55,7 +61,7 @@ if not defined ISCC (
     echo  WARNING: Inno Setup not found. Skipping installer build.
     echo  Download: https://jrsoftware.org/isinfo.php
     echo.
-    echo  Executable only: dist\TXTDrop.exe
+    echo  Executable only: dist\TXTDrop\TXTDrop.exe
     goto :exeonly
 )
 

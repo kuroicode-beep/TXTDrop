@@ -151,12 +151,16 @@ def drop_clipboard():
 # ── Ollama startup check (always silent) ─────────────────────────────────────
 
 def _ollama_check():
-    """On startup: check Ollama, silently start if needed. No toasts."""
+    """On startup: check Ollama, and silently start it only when enabled."""
     config.log_add("INFO", "ollama", "서버 상태 확인 중...")
     if ollama_client.is_running_cached():
         models = ollama_client.list_models()
         config.log_add("INFO", "ollama",
                        f"서버 실행 중 - 모델 {len(models)}개: {', '.join(models[:3])}")
+        return
+
+    if not config.get_bool("ollama_autostart"):
+        config.log_add("INFO", "ollama", "서버 미실행 - 자동 시작 비활성화됨")
         return
 
     config.log_add("INFO", "ollama", "서버 미실행 - 자동 시작 시도")
