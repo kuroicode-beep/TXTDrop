@@ -79,6 +79,7 @@ def _run(root, on_save):
     v_image_folder = tk.StringVar(value=config.get("image_save_folder"))
     v_prefix       = tk.StringVar(value=config.get("filename_prefix") or "txtdrop")
     v_hotkey       = tk.StringVar(value=config.get("hotkey") or "ctrl+shift+z")
+    v_tts_hotkey   = tk.StringVar(value=config.get("tts_hotkey") or "ctrl+shift+x")
     v_model        = tk.StringVar(value=config.get("ollama_model") or "llama3")
     v_autostart    = tk.BooleanVar(value=config.get_bool("ollama_autostart"))
     v_sound        = tk.BooleanVar(value=config.get_bool("sound_enabled"))
@@ -109,7 +110,8 @@ def _run(root, on_save):
 
     # ── Section: 단축키 ───────────────────────────────────────────────────────
     _section(body, t("sec_hotkey"))
-    _hotkey_row(body, t("lbl_hotkey"), v_hotkey, win)
+    _hotkey_row(body, t("lbl_hotkey"),     v_hotkey,     win)
+    _hotkey_row(body, t("lbl_tts_hotkey"), v_tts_hotkey, win)
 
     # ── Section: AI ───────────────────────────────────────────────────────────
     ai_hdr = tk.Frame(body, bg=_BG)
@@ -247,6 +249,7 @@ def _run(root, on_save):
         config.set("image_save_folder", v_image_folder.get().strip())
         config.set("filename_prefix",   v_prefix.get().strip() or "txtdrop")
         config.set("hotkey",            v_hotkey.get().strip() or "ctrl+shift+z")
+        config.set("tts_hotkey",        v_tts_hotkey.get().strip() or "ctrl+shift+x")
         config.set("ollama_model",      v_model.get())
         config.set_bool("ollama_autostart", v_autostart.get())
         config.set_bool("sound_enabled",    v_sound.get())

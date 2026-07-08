@@ -43,7 +43,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "lbl_text_folder":    "텍스트 저장 폴더",
         "lbl_img_folder":     "이미지 저장 폴더",
         "lbl_prefix":         "파일명 접두사",
-        "lbl_hotkey":         "단축키",
+        "lbl_hotkey":         "저장 단축키",
+        "lbl_tts_hotkey":     "낭독 단축키",
         "lbl_model":          "Ollama 모델",
         "lbl_language":       "언어",
         # settings checks / buttons
@@ -75,6 +76,14 @@ _STRINGS: dict[str, dict[str, str]] = {
         # ai toast
         "toast_ai_generating":    "AI 제목 생성 중",
         "toast_ai_body":          "Ollama로 제목을 생성하는 중입니다…",
+        # tts
+        "toast_tts_generating":   "음성 낭독 준비 중",
+        "toast_tts_body":         "SVIL TTS로 음성을 생성하는 중입니다…",
+        "toast_tts_fail":         "낭독 실패",
+        "tts_nothing":            "읽을 텍스트가 없습니다. 텍스트를 선택하거나 복사한 뒤 다시 눌러주세요.",
+        "tts_offline":            "SVIL TTS 서버(:8765)에 연결할 수 없습니다.",
+        "tts_timeout":            "음성 생성 시간이 초과되었습니다.",
+        "tts_fail_response":      "TTS 서버 응답이 올바르지 않습니다.",
         # hotkey
         "hotkey_modifier_required": "Ctrl/Shift/Alt 중 하나 이상 필요",
         # language restart
@@ -122,7 +131,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "lbl_text_folder":    "Text Save Folder",
         "lbl_img_folder":     "Image Save Folder",
         "lbl_prefix":         "Filename Prefix",
-        "lbl_hotkey":         "Hotkey",
+        "lbl_hotkey":         "Save Hotkey",
+        "lbl_tts_hotkey":     "TTS Hotkey",
         "lbl_model":          "Ollama Model",
         "lbl_language":       "Language",
         # settings checks / buttons
@@ -154,6 +164,14 @@ _STRINGS: dict[str, dict[str, str]] = {
         # ai toast
         "toast_ai_generating":    "Generating AI Title",
         "toast_ai_body":          "Generating title with Ollama…",
+        # tts
+        "toast_tts_generating":   "Preparing Speech",
+        "toast_tts_body":         "Generating speech with SVIL TTS…",
+        "toast_tts_fail":         "TTS Failed",
+        "tts_nothing":            "Nothing to read. Select or copy text, then try again.",
+        "tts_offline":            "Cannot connect to SVIL TTS server (:8765).",
+        "tts_timeout":            "Speech generation timed out.",
+        "tts_fail_response":      "Invalid response from TTS server.",
         # hotkey
         "hotkey_modifier_required": "Ctrl/Shift/Alt required",
         # language restart

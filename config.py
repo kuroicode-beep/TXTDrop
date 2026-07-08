@@ -17,6 +17,7 @@ DEFAULTS = {
     "filename_prefix":   "txtdrop",
     "sound_enabled":     "true",
     "hotkey":            "ctrl+shift+z",
+    "tts_hotkey":        "ctrl+shift+x",
     "language":          "ko",
     "ollama_model":      "llama3.2",
     "ollama_autostart":  "true",

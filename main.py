@@ -17,6 +17,7 @@ import pystray
 import tk_root as tkr
 import config
 import ollama_client
+import tts_client
 import sound
 import notify
 import log_window
@@ -145,6 +146,53 @@ def drop_clipboard():
         msg = f"[text] {e}"
         config.log_add("ERROR", "save", msg)
         notify.show_toast(t("toast_fail"), str(e),
+                          on_click=log_window.open_log, level="error")
+
+
+# ── Clipboard TTS (ctrl+shift+x) ──────────────────────────────────────────────
+
+def _grab_selection(old: str) -> str:
+    """
+    현재 선택된 텍스트를 Ctrl+C로 복사해 가져온다.
+    선택이 없으면 기존 클립보드(old)를 반환하고, 클립보드는 원래대로 되돌린다.
+    """
+    # 단축키 보조키에서 손을 뗄 때까지 대기 (최대 1초) — 안 떼면 Ctrl+Shift+C가 눌림
+    deadline = time.monotonic() + 1.0
+    while time.monotonic() < deadline and (
+        keyboard.is_pressed("ctrl") or keyboard.is_pressed("shift")
+        or keyboard.is_pressed("x")
+    ):
+        time.sleep(0.03)
+
+    keyboard.send("ctrl+c")
+    time.sleep(0.2)                      # 대상 앱의 클립보드 반영 대기
+    text = pyperclip.paste()
+    if text and text.strip():
+        if text != old:
+            pyperclip.copy(old)          # 낭독이 클립보드를 바꾸지 않도록 원복
+        return text
+    return old                           # 선택 없음 → 기존 클립보드 낭독
+
+
+def speak_clipboard():
+    # 선택한 텍스트(없으면 클립보드)를 SVIL TTS(:8765)로 즉시 낭독
+    try:
+        text = _grab_selection(pyperclip.paste())
+        if not text or not text.strip():
+            config.log_add("WARN", "tts", t("save_fail_empty"))
+            notify.show_toast(t("toast_tts_fail"), t("tts_nothing"),
+                              level="error")
+            return
+
+        notify.show_toast(t("toast_tts_generating"), t("toast_tts_body"),
+                          level="info")
+        ok, err = tts_client.speak(text)
+        if not ok:
+            notify.show_toast(t("toast_tts_fail"), err,
+                              on_click=log_window.open_log, level="error")
+    except Exception as e:
+        config.log_add("ERROR", "tts", f"예외: {type(e).__name__}: {e}")
+        notify.show_toast(t("toast_tts_fail"), str(e),
                           on_click=log_window.open_log, level="error")
 
 
@@ -354,25 +402,31 @@ def main():
     # Ollama check in background (always silent)
     threading.Thread(target=_ollama_check, daemon=True).start()
 
-    # Register hotkey
-    hotkey_state = {"current": config.get("hotkey") or "ctrl+shift+z"}
-    try:
+    # Register hotkeys (저장 + 낭독)
+    def _bind(hk, fn):
         keyboard.add_hotkey(
-            hotkey_state["current"],
-            lambda: threading.Thread(target=drop_clipboard, daemon=True).start(),
+            hk, lambda: threading.Thread(target=fn, daemon=True).start()
         )
-        config.log_add("INFO", "startup", f"단축키 등록: {hotkey_state['current']}")
-    except Exception as e:
-        config.log_add("ERROR", "startup", f"단축키 등록 실패: {e}")
-        hotkey_state["current"] = "ctrl+shift+z"
+
+    def _register(state, default, fn, label):
+        # 설정된 단축키 등록, 실패 시 기본값으로 폴백
         try:
-            keyboard.add_hotkey(
-                hotkey_state["current"],
-                lambda: threading.Thread(target=drop_clipboard, daemon=True).start(),
-            )
-            config.log_add("INFO", "startup", f"기본 단축키로 재등록: {hotkey_state['current']}")
-        except Exception as e2:
-            config.log_add("ERROR", "startup", f"기본 단축키도 등록 실패: {e2}")
+            _bind(state["current"], fn)
+            config.log_add("INFO", "startup", f"{label} 단축키 등록: {state['current']}")
+        except Exception as e:
+            config.log_add("ERROR", "startup", f"{label} 단축키 등록 실패: {e}")
+            state["current"] = default
+            try:
+                _bind(state["current"], fn)
+                config.log_add("INFO", "startup",
+                               f"{label} 기본 단축키로 재등록: {state['current']}")
+            except Exception as e2:
+                config.log_add("ERROR", "startup", f"{label} 기본 단축키도 등록 실패: {e2}")
+
+    hotkey_state     = {"current": config.get("hotkey") or "ctrl+shift+z"}
+    tts_hotkey_state = {"current": config.get("tts_hotkey") or "ctrl+shift+x"}
+    _register(hotkey_state,     "ctrl+shift+z", drop_clipboard,  "저장")
+    _register(tts_hotkey_state, "ctrl+shift+x", speak_clipboard, "낭독")
 
     # Sleep / wake handler — must be after tkr.init()
     _setup_sleep_wake_handler(hotkey_state)
@@ -382,23 +436,27 @@ def main():
     tray_ref = [None]
 
     def _do_settings():
+        def _rebind(state, new_hk, fn, label):
+            # 설정 저장 후 변경된 단축키만 재등록
+            if new_hk == state["current"]:
+                return
+            try:
+                keyboard.remove_hotkey(state["current"])
+            except Exception:
+                pass
+            try:
+                _bind(new_hk, fn)
+                config.log_add("INFO", "startup",
+                               f"{label} 단축키 변경: {state['current']} -> {new_hk}")
+                state["current"] = new_hk
+            except Exception as e:
+                config.log_add("ERROR", "startup", f"{label} 단축키 변경 실패: {e}")
+
         def on_save():
-            new_hk = config.get("hotkey") or "ctrl+shift+z"
-            if new_hk != hotkey_state["current"]:
-                try:
-                    keyboard.remove_hotkey(hotkey_state["current"])
-                except Exception:
-                    pass
-                try:
-                    keyboard.add_hotkey(
-                        new_hk,
-                        lambda: threading.Thread(target=drop_clipboard, daemon=True).start(),
-                    )
-                    config.log_add("INFO", "startup",
-                                   f"단축키 변경: {hotkey_state['current']} -> {new_hk}")
-                    hotkey_state["current"] = new_hk
-                except Exception as e:
-                    config.log_add("ERROR", "startup", f"단축키 변경 실패: {e}")
+            _rebind(hotkey_state,     config.get("hotkey") or "ctrl+shift+z",
+                    drop_clipboard,  "저장")
+            _rebind(tts_hotkey_state, config.get("tts_hotkey") or "ctrl+shift+x",
+                    speak_clipboard, "낭독")
         settings_window.open_settings(on_save=on_save)
 
     def _do_log():
