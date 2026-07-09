@@ -18,6 +18,8 @@ import tk_root as tkr
 import config
 import ollama_client
 import tts_client
+import dedup
+import dedup_window
 import sound
 import notify
 import log_window
@@ -134,13 +136,21 @@ def drop_clipboard():
         filepath = os.path.join(folder, filename)
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(text)
-        config.history_add("text", filename, filepath)
+        hist_id = config.history_add("text", filename, filepath)
         config.log_add("INFO", "save", f"[text] {filename}")
         if config.get_bool("sound_enabled"):
             config.log_add("INFO", "sound", "play")
             sound.play_drop()
         notify.show_toast(t("toast_ok"), filename,
                           on_click=log_window.open_log)
+
+        # 저장 직후 백그라운드 중복 검사 — 중복이면 기록을 휴지통으로 이동
+        dedup.check_new_async(
+            hist_id, filename, text,
+            on_dup=lambda reason: notify.show_toast(
+                t("toast_dedup"), reason,
+                on_click=dedup_window.open_dedup, level="info"),
+        )
 
     except Exception as e:
         msg = f"[text] {e}"
@@ -316,7 +326,7 @@ def _first_run() -> bool:
 
 # ── Dark tray menu ────────────────────────────────────────────────────────────
 
-def _dark_tray_menu(settings_cb, log_cb, ollama_cb, exit_cb):
+def _dark_tray_menu(settings_cb, log_cb, dedup_cb, ollama_cb, exit_cb):
     """Show a custom dark Tk popup menu at the current cursor position."""
     class _POINT(ctypes.Structure):
         _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
@@ -336,6 +346,7 @@ def _dark_tray_menu(settings_cb, log_cb, ollama_cb, exit_cb):
         )
         menu.add_command(label=t("settings"),           command=settings_cb)
         menu.add_command(label=t("log_history"),        command=log_cb)
+        menu.add_command(label=t("tray_dedup"),         command=dedup_cb)
         menu.add_command(label=t("tray_ollama_refresh"), command=ollama_cb)
         menu.add_separator()
         menu.add_command(label=t("exit"),               command=exit_cb)
@@ -344,7 +355,7 @@ def _dark_tray_menu(settings_cb, log_cb, ollama_cb, exit_cb):
     tkr.call_on_main(_popup)
 
 
-def _patch_tray_dark_menu(tray, settings_cb, log_cb, ollama_cb, exit_cb):
+def _patch_tray_dark_menu(tray, settings_cb, log_cb, dedup_cb, ollama_cb, exit_cb):
     """
     Monkey-patch pystray's WM_RBUTTONUP handler to show a custom dark menu
     instead of the native Windows popup.
@@ -360,7 +371,7 @@ def _patch_tray_dark_menu(tray, settings_cb, log_cb, ollama_cb, exit_cb):
             if lparam == WM_LBUTTONUP:
                 self()
             elif lparam == WM_RBUTTONUP:
-                _dark_tray_menu(settings_cb, log_cb, ollama_cb, exit_cb)
+                _dark_tray_menu(settings_cb, log_cb, dedup_cb, ollama_cb, exit_cb)
 
         tray._on_notify = types.MethodType(_custom_on_notify, tray)
     except Exception as e:
@@ -462,6 +473,9 @@ def main():
     def _do_log():
         log_window.open_log()
 
+    def _do_dedup():
+        dedup_window.open_dedup()
+
     def _do_exit():
         config.log_add("INFO", "startup", "TXTDrop 종료됨")
         keyboard.unhook_all()
@@ -473,6 +487,7 @@ def main():
     # pystray native-menu callbacks (fallback)
     def on_settings(icon, item):    _do_settings()
     def on_log(icon, item):         _do_log()
+    def on_dedup(icon, item):       _do_dedup()
     def on_ollama(icon, item):      _do_ollama_refresh()
     def on_exit(icon, item):        _do_exit()
 
@@ -483,13 +498,15 @@ def main():
         menu=pystray.Menu(
             pystray.MenuItem(lambda item: t("settings"),           on_settings),
             pystray.MenuItem(lambda item: t("log_history"),        on_log),
+            pystray.MenuItem(lambda item: t("tray_dedup"),         on_dedup),
             pystray.MenuItem(lambda item: t("tray_ollama_refresh"), on_ollama),
             pystray.MenuItem(lambda item: t("exit"),               on_exit),
         ),
     )
     tray_ref[0] = tray
 
-    _patch_tray_dark_menu(tray, _do_settings, _do_log, _do_ollama_refresh, _do_exit)
+    _patch_tray_dark_menu(tray, _do_settings, _do_log, _do_dedup,
+                          _do_ollama_refresh, _do_exit)
 
     tray.run_detached()
     tkr.get().mainloop()

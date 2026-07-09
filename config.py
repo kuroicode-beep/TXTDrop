@@ -21,6 +21,8 @@ DEFAULTS = {
     "language":          "ko",
     "ollama_model":      "llama3.2",
     "ollama_autostart":  "true",
+    "dedup_auto":        "true",
+    "dedup_threshold":   "90",
 }
 
 # In-memory cache — avoids repeated DB opens for read-heavy hot path
@@ -51,6 +53,15 @@ def init_db():
                 level      TEXT NOT NULL,
                 category   TEXT NOT NULL,
                 message    TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS trash (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                saved_at   TEXT NOT NULL,
+                type       TEXT NOT NULL,
+                filename   TEXT NOT NULL,
+                filepath   TEXT NOT NULL,
+                trashed_at TEXT NOT NULL,
+                reason     TEXT NOT NULL
             );
         """)
         # Purge logs older than 30 days on startup
@@ -92,13 +103,83 @@ def set_bool(key: str, value: bool):
     set(key, "true" if value else "false")
 
 
-def history_add(type_: str, filename: str, filepath: str):
+def history_add(type_: str, filename: str, filepath: str) -> int:
     with _connect() as conn:
-        conn.execute(
+        cur = conn.execute(
             "INSERT INTO history (saved_at, type, filename, filepath) "
             "VALUES (?, ?, ?, ?)",
             (datetime.datetime.now().isoformat(), type_, filename, filepath),
         )
+        return cur.lastrowid
+
+
+def history_rows(type_: str | None = None, limit: int = 5000) -> list[dict]:
+    """id 포함 저장 기록 조회 (중복 검사용, 오래된 순)."""
+    q, args = "SELECT id, saved_at, type, filename, filepath FROM history", []
+    if type_:
+        q += " WHERE type = ?"
+        args.append(type_)
+    q += " ORDER BY id ASC LIMIT ?"
+    args.append(limit)
+    with _connect() as conn:
+        rows = conn.execute(q, args).fetchall()
+    return [
+        {"id": r[0], "saved_at": r[1], "type": r[2],
+         "filename": r[3], "filepath": r[4]}
+        for r in rows
+    ]
+
+
+# ── Trash (중복 문서 격리 — row 이동, 파일은 건드리지 않음) ────────────────────
+
+def history_move_to_trash(hist_id: int, reason: str) -> bool:
+    """history row를 trash 테이블로 이동. 성공 시 True."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT saved_at, type, filename, filepath FROM history WHERE id = ?",
+            (hist_id,),
+        ).fetchone()
+        if not row:
+            return False
+        conn.execute(
+            "INSERT INTO trash (saved_at, type, filename, filepath, trashed_at, reason) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (*row, datetime.datetime.now().isoformat(), reason),
+        )
+        conn.execute("DELETE FROM history WHERE id = ?", (hist_id,))
+        return True
+
+
+def trash_get(limit: int = 500) -> list[dict]:
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT id, saved_at, type, filename, filepath, trashed_at, reason "
+            "FROM trash ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [
+        {"id": r[0], "saved_at": r[1], "type": r[2], "filename": r[3],
+         "filepath": r[4], "trashed_at": r[5], "reason": r[6]}
+        for r in rows
+    ]
+
+
+def trash_restore(trash_id: int) -> bool:
+    """trash row를 history로 되돌린다. 성공 시 True."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT saved_at, type, filename, filepath FROM trash WHERE id = ?",
+            (trash_id,),
+        ).fetchone()
+        if not row:
+            return False
+        conn.execute(
+            "INSERT INTO history (saved_at, type, filename, filepath) "
+            "VALUES (?, ?, ?, ?)",
+            row,
+        )
+        conn.execute("DELETE FROM trash WHERE id = ?", (trash_id,))
+        return True
 
 
 # ── Log ───────────────────────────────────────────────────────────────────────

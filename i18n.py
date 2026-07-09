@@ -88,6 +88,23 @@ _STRINGS: dict[str, dict[str, str]] = {
         "hotkey_modifier_required": "Ctrl/Shift/Alt 중 하나 이상 필요",
         # language restart
         "lang_restart_notice":    "언어 변경은 재시작 후 적용됩니다.",
+        # dedup
+        "tray_dedup":             "중복제거",
+        "dedup_title":            "TXTDrop — 중복제거",
+        "dedup_run":              "중복제거 실행",
+        "dedup_running":          "검사 중… {done}/{total}",
+        "dedup_result":           "{n}건을 휴지통으로 이동했습니다 (파일 없음 {missing}건 건너뜀)",
+        "dedup_none":             "중복 문서가 없습니다.",
+        "dedup_restore":          "선택 복구",
+        "dedup_restored":         "{n}건 복구됨",
+        "dedup_threshold":        "유사도 기준(%)",
+        "dedup_col_trashed":      "이동 시각",
+        "dedup_col_file":         "파일명",
+        "dedup_col_reason":       "사유",
+        "dedup_reason":           "기존 '{name}'와 {pct}% 유사",
+        "toast_dedup":            "중복 문서 정리",
+        "sec_dedup":              "중복제거",
+        "chk_dedup_auto":         "저장 시 자동 중복 검사 (중복 기록은 휴지통으로 이동)",
     },
     "en": {
         # tray
@@ -176,6 +193,23 @@ _STRINGS: dict[str, dict[str, str]] = {
         "hotkey_modifier_required": "Ctrl/Shift/Alt required",
         # language restart
         "lang_restart_notice":    "Language change takes effect after restart.",
+        # dedup
+        "tray_dedup":             "Deduplicate",
+        "dedup_title":            "TXTDrop — Deduplicate",
+        "dedup_run":              "Run Dedup",
+        "dedup_running":          "Scanning… {done}/{total}",
+        "dedup_result":           "Moved {n} item(s) to trash ({missing} missing file(s) skipped)",
+        "dedup_none":             "No duplicates found.",
+        "dedup_restore":          "Restore Selected",
+        "dedup_restored":         "{n} restored",
+        "dedup_threshold":        "Similarity (%)",
+        "dedup_col_trashed":      "Trashed At",
+        "dedup_col_file":         "Filename",
+        "dedup_col_reason":       "Reason",
+        "dedup_reason":           "{pct}% similar to '{name}'",
+        "toast_dedup":            "Duplicate Filtered",
+        "sec_dedup":              "Deduplication",
+        "chk_dedup_auto":         "Auto-check duplicates on save (move record to trash)",
     },
 }
 

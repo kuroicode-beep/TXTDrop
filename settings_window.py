@@ -83,6 +83,7 @@ def _run(root, on_save):
     v_model        = tk.StringVar(value=config.get("ollama_model") or "llama3")
     v_autostart    = tk.BooleanVar(value=config.get_bool("ollama_autostart"))
     v_sound        = tk.BooleanVar(value=config.get_bool("sound_enabled"))
+    v_dedup_auto   = tk.BooleanVar(value=config.get_bool("dedup_auto"))
     v_lang         = tk.StringVar(value=config.get("language") or "ko")
 
     # ── Layout ────────────────────────────────────────────────────────────────
@@ -181,6 +182,10 @@ def _run(root, on_save):
 
     _check(body, t("chk_autostart"), v_autostart)
 
+    # ── Section: 중복제거 ─────────────────────────────────────────────────────
+    _section(body, t("sec_dedup"))
+    _check(body, t("chk_dedup_auto"), v_dedup_auto)
+
     # ── Section: 사운드 ───────────────────────────────────────────────────────
     _section(body, t("sec_sound"))
     _check(body, t("chk_sound"), v_sound)
@@ -253,6 +258,7 @@ def _run(root, on_save):
         config.set("ollama_model",      v_model.get())
         config.set_bool("ollama_autostart", v_autostart.get())
         config.set_bool("sound_enabled",    v_sound.get())
+        config.set_bool("dedup_auto",       v_dedup_auto.get())
         config.set("language",          v_lang.get())
 
         msg = t("saved")
