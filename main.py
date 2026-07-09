@@ -196,7 +196,12 @@ def speak_clipboard():
 
         notify.show_toast(t("toast_tts_generating"), t("toast_tts_body"),
                           level="info")
-        ok, err = tts_client.speak(text)
+        ok, err = tts_client.speak(
+            text,
+            on_starting=lambda: notify.show_toast(
+                t("toast_tts_starting"), t("toast_tts_starting_body"),
+                level="info"),
+        )
         if not ok:
             notify.show_toast(t("toast_tts_fail"), err,
                               on_click=log_window.open_log, level="error")

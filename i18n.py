@@ -79,6 +79,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         # tts
         "toast_tts_generating":   "음성 낭독 준비 중",
         "toast_tts_body":         "SVIL TTS로 음성을 생성하는 중입니다…",
+        "toast_tts_starting":     "TTS 서버 시작 중",
+        "toast_tts_starting_body": "SVIL TTS 서버를 자동으로 켜는 중입니다 (최대 1분)…",
         "toast_tts_fail":         "낭독 실패",
         "tts_nothing":            "읽을 텍스트가 없습니다. 텍스트를 선택하거나 복사한 뒤 다시 눌러주세요.",
         "tts_offline":            "SVIL TTS 서버(:8765)에 연결할 수 없습니다.",
@@ -184,6 +186,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         # tts
         "toast_tts_generating":   "Preparing Speech",
         "toast_tts_body":         "Generating speech with SVIL TTS…",
+        "toast_tts_starting":     "Starting TTS Server",
+        "toast_tts_starting_body": "Auto-starting the SVIL TTS server (up to 1 min)…",
         "toast_tts_fail":         "TTS Failed",
         "tts_nothing":            "Nothing to read. Select or copy text, then try again.",
         "tts_offline":            "Cannot connect to SVIL TTS server (:8765).",
