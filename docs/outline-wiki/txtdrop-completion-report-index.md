@@ -21,6 +21,21 @@
 
 ## 03. 주요 완료보고서
 
+### 2026-07-10 AI 기억 캡처 (Ctrl+Shift+M, TXTAIMemory 연계)
+
+요약:
+
+* Outline 위키의 v0.8 증분 PRD(유미 작성)를 확인·구현
+* `memory_client.py`가 TXTAIMemory control API(:47530) `/write`를 직접 호출(`source=drop`), 자동 기동 없이 오프라인 시 로컬 파일(`ai_memory_inbox/*.jsonl`) 폴백
+* PRD의 페어링 절차는 실제 TXTAIMemory API에 없는 개념(localhost 전용·무인증)이라 생략
+* 기본 비활성(옵트인) — 기존 사용자 동작 무영향
+* 모킹 테스트 + 실서버 E2E(원장 반영 확인) + 실단축키 통합 테스트 통과, master 병합(`d21a9ff`)
+
+관련 파일:
+
+* `memory_client.py`, `main.py`, `config.py`, `settings_window.py`, `i18n.py`
+* `docs\reports\완료보고_20260710_AI기억캡처_TXTAIMemory연계_ClaudeCode.md`
+
 ### 2026-07-10 TTS 자동 기동 (MCP 경로 정합)
 
 요약:
@@ -128,6 +143,7 @@
 * TXTDrop, TXTDrop 프로젝트 위키, TXTDrop PRD, TXTDrop 구현 스펙, TXTDrop 아키텍처, TXTDrop 개발진행 히스토리, TXTDrop 완료보고서 인덱스
 * TTS 낭독, Ctrl+Shift+X, tts_client, SVIL TTS 프록시
 * TTS 자동 기동, svil_tts_speak, local-server, 웹 백엔드 3000, 헬스체크
+* AI 기억 캡처, Ctrl+Shift+M, memory_client, TXTAIMemory, control API 47530, ai_memory_inbox
 * 중복제거, trash, dedup, difflib
 * TXTBrain 연계, 내용 해시 중복 차단
 * ollama_autostart, ollama 새로고침, PyInstaller onedir, build.bat, 첫 실행 데드락, os._exit
