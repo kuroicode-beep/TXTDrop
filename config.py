@@ -23,6 +23,9 @@ DEFAULTS = {
     "ollama_autostart":  "true",
     "dedup_auto":        "true",
     "dedup_threshold":   "90",
+    "memory_enabled":    "false",
+    "memory_hotkey":     "ctrl+shift+m",
+    "memory_char_limit": "8000",
 }
 
 # In-memory cache — avoids repeated DB opens for read-heavy hot path

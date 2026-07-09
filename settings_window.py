@@ -84,6 +84,8 @@ def _run(root, on_save):
     v_autostart    = tk.BooleanVar(value=config.get_bool("ollama_autostart"))
     v_sound        = tk.BooleanVar(value=config.get_bool("sound_enabled"))
     v_dedup_auto   = tk.BooleanVar(value=config.get_bool("dedup_auto"))
+    v_memory_enabled = tk.BooleanVar(value=config.get_bool("memory_enabled"))
+    v_memory_hotkey  = tk.StringVar(value=config.get("memory_hotkey") or "ctrl+shift+m")
     v_lang         = tk.StringVar(value=config.get("language") or "ko")
 
     # ── Layout ────────────────────────────────────────────────────────────────
@@ -113,6 +115,11 @@ def _run(root, on_save):
     _section(body, t("sec_hotkey"))
     _hotkey_row(body, t("lbl_hotkey"),     v_hotkey,     win)
     _hotkey_row(body, t("lbl_tts_hotkey"), v_tts_hotkey, win)
+
+    # ── Section: AI 기억 (TXTAIMemory 연계) ─────────────────────────────────────
+    _section(body, t("sec_memory"))
+    _check(body, t("chk_memory_enabled"), v_memory_enabled)
+    _hotkey_row(body, t("lbl_memory_hotkey"), v_memory_hotkey, win)
 
     # ── Section: AI ───────────────────────────────────────────────────────────
     ai_hdr = tk.Frame(body, bg=_BG)
@@ -259,6 +266,8 @@ def _run(root, on_save):
         config.set_bool("ollama_autostart", v_autostart.get())
         config.set_bool("sound_enabled",    v_sound.get())
         config.set_bool("dedup_auto",       v_dedup_auto.get())
+        config.set_bool("memory_enabled",   v_memory_enabled.get())
+        config.set("memory_hotkey",         v_memory_hotkey.get().strip() or "ctrl+shift+m")
         config.set("language",          v_lang.get())
 
         msg = t("saved")

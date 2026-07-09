@@ -18,6 +18,7 @@ import tk_root as tkr
 import config
 import ollama_client
 import tts_client
+import memory_client
 import dedup
 import dedup_window
 import sound
@@ -161,16 +162,17 @@ def drop_clipboard():
 
 # ── Clipboard TTS (ctrl+shift+x) ──────────────────────────────────────────────
 
-def _grab_selection(old: str) -> str:
+def _grab_selection(old: str, trigger_key: str) -> str:
     """
     현재 선택된 텍스트를 Ctrl+C로 복사해 가져온다.
     선택이 없으면 기존 클립보드(old)를 반환하고, 클립보드는 원래대로 되돌린다.
+    trigger_key: 단축키의 마지막 키(예: 낭독="x", AI 기억="m") — 손을 뗄 때까지 대기하는 데 사용.
     """
-    # 단축키 보조키에서 손을 뗄 때까지 대기 (최대 1초) — 안 떼면 Ctrl+Shift+C가 눌림
+    # 단축키 보조키에서 손을 뗄 때까지 대기 (최대 1초) — 안 떼면 Ctrl+Shift+<key>가 눌림
     deadline = time.monotonic() + 1.0
     while time.monotonic() < deadline and (
         keyboard.is_pressed("ctrl") or keyboard.is_pressed("shift")
-        or keyboard.is_pressed("x")
+        or keyboard.is_pressed(trigger_key)
     ):
         time.sleep(0.03)
 
@@ -179,15 +181,29 @@ def _grab_selection(old: str) -> str:
     text = pyperclip.paste()
     if text and text.strip():
         if text != old:
-            pyperclip.copy(old)          # 낭독이 클립보드를 바꾸지 않도록 원복
+            pyperclip.copy(old)          # 캡처가 클립보드를 바꾸지 않도록 원복
         return text
-    return old                           # 선택 없음 → 기존 클립보드 낭독
+    return old                           # 선택 없음 → 기존 클립보드 사용
+
+
+def _active_window_title() -> str | None:
+    # 캡처 시점의 활성 창 제목 (origin_app 힌트, best-effort)
+    try:
+        hwnd = ctypes.windll.user32.GetForegroundWindow()
+        length = ctypes.windll.user32.GetWindowTextLengthW(hwnd)
+        if length == 0:
+            return None
+        buf = ctypes.create_unicode_buffer(length + 1)
+        ctypes.windll.user32.GetWindowTextW(hwnd, buf, length + 1)
+        return buf.value or None
+    except Exception:
+        return None
 
 
 def speak_clipboard():
     # 선택한 텍스트(없으면 클립보드)를 SVIL TTS(:8765)로 즉시 낭독
     try:
-        text = _grab_selection(pyperclip.paste())
+        text = _grab_selection(pyperclip.paste(), "x")
         if not text or not text.strip():
             config.log_add("WARN", "tts", t("save_fail_empty"))
             notify.show_toast(t("toast_tts_fail"), t("tts_nothing"),
@@ -208,6 +224,33 @@ def speak_clipboard():
     except Exception as e:
         config.log_add("ERROR", "tts", f"예외: {type(e).__name__}: {e}")
         notify.show_toast(t("toast_tts_fail"), str(e),
+                          on_click=log_window.open_log, level="error")
+
+
+# ── AI 기억 캡처 (ctrl+shift+m, TXTAIMemory 연계, 기본 비활성) ─────────────────
+
+def capture_memory():
+    # 선택한 텍스트(없으면 클립보드)를 TXTAIMemory 원장(source=drop)에 캡처
+    try:
+        origin = _active_window_title()
+        text = _grab_selection(pyperclip.paste(), "m")
+        if not text or not text.strip():
+            config.log_add("WARN", "memory", t("save_fail_empty"))
+            notify.show_toast(t("toast_memory_fail"), t("tts_nothing"),
+                              level="error")
+            return
+
+        ok, msg, fell_back = memory_client.capture(text, origin_app=origin)
+        if fell_back:
+            notify.show_toast(t("toast_memory_fallback"), msg, level="info")
+        elif ok:
+            notify.show_toast(t("toast_memory_ok"), t("toast_memory_ok_body"))
+        else:
+            notify.show_toast(t("toast_memory_fail"), msg,
+                              on_click=log_window.open_log, level="error")
+    except Exception as e:
+        config.log_add("ERROR", "memory", f"예외: {type(e).__name__}: {e}")
+        notify.show_toast(t("toast_memory_fail"), str(e),
                           on_click=log_window.open_log, level="error")
 
 
@@ -444,6 +487,15 @@ def main():
     _register(hotkey_state,     "ctrl+shift+z", drop_clipboard,  "저장")
     _register(tts_hotkey_state, "ctrl+shift+x", speak_clipboard, "낭독")
 
+    # AI 기억 캡처(TXTAIMemory 연계)는 기본 비활성 — 켜져 있을 때만 단축키 등록
+    memory_hotkey_state = {
+        "current": config.get("memory_hotkey") or "ctrl+shift+m",
+        "registered": False,
+    }
+    if config.get_bool("memory_enabled"):
+        _register(memory_hotkey_state, "ctrl+shift+m", capture_memory, "AI 기억")
+        memory_hotkey_state["registered"] = True
+
     # Sleep / wake handler — must be after tkr.init()
     _setup_sleep_wake_handler(hotkey_state)
 
@@ -468,11 +520,31 @@ def main():
             except Exception as e:
                 config.log_add("ERROR", "startup", f"{label} 단축키 변경 실패: {e}")
 
+        def _rebind_memory():
+            # AI 기억은 활성화 토글에 따라 등록/해제도 함께 처리
+            enabled = config.get_bool("memory_enabled")
+            new_hk  = config.get("memory_hotkey") or "ctrl+shift+m"
+            if memory_hotkey_state["registered"]:
+                if not enabled:
+                    try:
+                        keyboard.remove_hotkey(memory_hotkey_state["current"])
+                    except Exception:
+                        pass
+                    memory_hotkey_state["registered"] = False
+                    config.log_add("INFO", "startup", "AI 기억 단축키 해제됨 (비활성화)")
+                elif new_hk != memory_hotkey_state["current"]:
+                    _rebind(memory_hotkey_state, new_hk, capture_memory, "AI 기억")
+            elif enabled:
+                memory_hotkey_state["current"] = new_hk
+                _register(memory_hotkey_state, "ctrl+shift+m", capture_memory, "AI 기억")
+                memory_hotkey_state["registered"] = True
+
         def on_save():
             _rebind(hotkey_state,     config.get("hotkey") or "ctrl+shift+z",
                     drop_clipboard,  "저장")
             _rebind(tts_hotkey_state, config.get("tts_hotkey") or "ctrl+shift+x",
                     speak_clipboard, "낭독")
+            _rebind_memory()
         settings_window.open_settings(on_save=on_save)
 
     def _do_log():

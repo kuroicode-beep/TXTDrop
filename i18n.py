@@ -107,6 +107,16 @@ _STRINGS: dict[str, dict[str, str]] = {
         "toast_dedup":            "중복 문서 정리",
         "sec_dedup":              "중복제거",
         "chk_dedup_auto":         "저장 시 자동 중복 검사 (중복 기록은 휴지통으로 이동)",
+        # AI 기억 (TXTAIMemory 연계)
+        "sec_memory":             "AI 기억 (TXTAIMemory)",
+        "chk_memory_enabled":     "AI 기억 캡처 사용 (선택 텍스트를 TXTAIMemory에 저장)",
+        "lbl_memory_hotkey":      "AI 기억 단축키",
+        "toast_memory_ok":        "AI 기억 저장됨",
+        "toast_memory_ok_body":   "TXTAIMemory에 기록했습니다.",
+        "toast_memory_fail":      "AI 기억 캡처 실패",
+        "toast_memory_fallback":  "AI 기억 오프라인",
+        "memory_fallback_saved":  "TXTAIMemory 서버에 연결할 수 없어 로컬에 임시 보관했습니다.",
+        "memory_fallback_failed": "TXTAIMemory 연결 실패, 로컬 보관도 실패했습니다.",
     },
     "en": {
         # tray
@@ -214,6 +224,16 @@ _STRINGS: dict[str, dict[str, str]] = {
         "toast_dedup":            "Duplicate Filtered",
         "sec_dedup":              "Deduplication",
         "chk_dedup_auto":         "Auto-check duplicates on save (move record to trash)",
+        # AI Memory (TXTAIMemory integration)
+        "sec_memory":             "AI Memory (TXTAIMemory)",
+        "chk_memory_enabled":     "Enable AI memory capture (save selection to TXTAIMemory)",
+        "lbl_memory_hotkey":      "AI Memory Hotkey",
+        "toast_memory_ok":        "Saved to AI Memory",
+        "toast_memory_ok_body":   "Recorded in TXTAIMemory.",
+        "toast_memory_fail":      "AI Memory Capture Failed",
+        "toast_memory_fallback":  "AI Memory Offline",
+        "memory_fallback_saved":  "Could not reach TXTAIMemory server — saved locally instead.",
+        "memory_fallback_failed": "TXTAIMemory connection failed and local backup also failed.",
     },
 }
 
