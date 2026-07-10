@@ -11,6 +11,7 @@ from tkinter import filedialog, messagebox, ttk
 import config
 import ollama_client
 from i18n import t
+from version import VERSION_LABEL, VERSION_HISTORY
 
 # ── Palette ───────────────────────────────────────────────────────────────────
 _BG     = "#111111"
@@ -95,9 +96,19 @@ def _run(root, on_save):
     hdr = tk.Frame(outer, bg=_BG2, pady=14)
     hdr.pack(fill="x")
     tk.Label(hdr, text="TXTDrop", bg=_BG2, fg=_ACCENT,
-             font=("Malgun Gothic", 15, "bold")).pack(side="left", padx=20)
+             font=("Malgun Gothic", 15, "bold")).pack(side="left", padx=(20, 4))
+    tk.Label(hdr, text=VERSION_LABEL, bg=_BG2, fg=_DIM,
+             font=("Malgun Gothic", 10, "bold")).pack(side="left")
     tk.Label(hdr, text=t("settings_title"), bg=_BG2, fg=_DIM,
-             font=("Malgun Gothic", 10)).pack(side="left", padx=4)
+             font=("Malgun Gothic", 10)).pack(side="left", padx=(10, 0))
+
+    def show_history():
+        _show_version_history(win)
+
+    hist_link = tk.Label(hdr, text=t("btn_version_history"), bg=_BG2, fg="#69b4ff",
+                         font=("Malgun Gothic", 9, "underline"), cursor="hand2")
+    hist_link.pack(side="right", padx=20)
+    hist_link.bind("<Button-1>", lambda e: show_history())
 
     body = tk.Frame(outer, bg=_BG, padx=24, pady=8)
     body.pack(fill="both", expand=True)
@@ -443,3 +454,33 @@ def _hotkey_row(parent, label: str, var: tk.StringVar, win):
 
 def _check(parent, text: str, var: tk.BooleanVar):
     ttk.Checkbutton(parent, text=text, variable=var).pack(anchor="w", pady=3)
+
+
+def _show_version_history(parent):
+    """버전별 변경 요약을 최신순으로 보여주는 대화상자 (SVIL 앱 버전 규칙)."""
+    win = tk.Toplevel(parent)
+    win.title(t("version_history_title"))
+    win.configure(bg=_BG)
+    win.resizable(False, False)
+    win.attributes("-topmost", True)
+
+    tk.Label(win, text=t("version_history_title"), bg=_BG, fg=_ACCENT,
+             font=("Malgun Gothic", 12, "bold")).pack(anchor="w", padx=20, pady=(16, 8))
+
+    body = tk.Frame(win, bg=_BG, padx=20)
+    body.pack(fill="both", expand=True)
+
+    for ver, date, summary in VERSION_HISTORY:
+        row = tk.Frame(body, bg=_BG)
+        row.pack(fill="x", pady=4, anchor="w")
+        tk.Label(row, text=f"v{ver}", bg=_BG, fg=_ACCENT,
+                 font=("Malgun Gothic", 10, "bold"), width=8, anchor="w").pack(side="left")
+        tk.Label(row, text=date, bg=_BG, fg=_DIM,
+                 font=("Malgun Gothic", 9), width=11, anchor="w").pack(side="left")
+        tk.Label(row, text=summary, bg=_BG, fg=_FG, font=("Malgun Gothic", 9),
+                 anchor="w", justify="left", wraplength=360).pack(side="left", fill="x")
+
+    tk.Button(win, text=t("close"), command=win.destroy,
+              bg=_BG3, fg=_FG, font=("Malgun Gothic", 9),
+              relief="flat", bd=0, padx=16, pady=6,
+              cursor="hand2").pack(pady=16)

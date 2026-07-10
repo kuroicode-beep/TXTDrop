@@ -8,6 +8,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "exit":               "종료",
         # settings window
         "settings_title":     "TXTDrop 환경설정",
+        "btn_version_history": "업데이트 히스토리",
+        "version_history_title": "업데이트 히스토리",
         "save":               "저장",
         "cancel":             "취소",
         "saved":              "설정이 저장되었습니다.",
@@ -125,6 +127,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "exit":               "Exit",
         # settings window
         "settings_title":     "TXTDrop Settings",
+        "btn_version_history": "Update History",
+        "version_history_title": "Update History",
         "save":               "Save",
         "cancel":             "Cancel",
         "saved":              "Settings saved.",

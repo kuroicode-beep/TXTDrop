@@ -26,6 +26,7 @@ import notify
 import log_window
 import settings_window
 from i18n import t
+from version import VERSION_LABEL
 
 
 # ── Filename helpers ──────────────────────────────────────────────────────────
@@ -450,7 +451,7 @@ def main():
     # Create the shared Tk root on the main thread (mainloop runs here later)
     tkr.init()
 
-    config.log_add("INFO", "startup", "TXTDrop v0.6 시작됨")
+    config.log_add("INFO", "startup", f"TXTDrop {VERSION_LABEL} 시작됨")
 
     # First-run folder setup (uses tkr event loop)
     if not config.get("text_save_folder"):
@@ -571,7 +572,7 @@ def main():
     tray = pystray.Icon(
         name="TXTDrop",
         icon=_make_icon(),
-        title="TXTDrop",
+        title=f"TXTDrop {VERSION_LABEL}",
         menu=pystray.Menu(
             pystray.MenuItem(lambda item: t("settings"),           on_settings),
             pystray.MenuItem(lambda item: t("log_history"),        on_log),
