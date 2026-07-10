@@ -119,3 +119,14 @@ TXTDrop은 v0.7 + AI 기억 캡처 기준으로 Windows 트레이 상주, 전역
 * `docs\전체검토-및-개선제안-2026-07-05.md` — 코드 검토 및 개선 제안
 * `docs\reports\` — 완료보고서 (TTS 낭독, 중복제거, AI 기억 캡처 등)
 * `docs\outline-wiki\` — Outline 위키 원본
+
+### v0.8.0 (2026-07-10) — SemVer 정식 적용 + 전체 검증
+
+* `version.py` 신설 — `APP_VERSION`/`VERSION_LABEL`/`VERSION_HISTORY` 단일 소스, 실제 git 커밋 날짜 기준 v0.1.0~v0.8.0 정리
+* 설정 창 헤더에 버전 상시 표시 + "업데이트 히스토리" 대화상자 추가 (SVIL 앱 버전 규칙 준수)
+* `main.py`에 하드코딩되어 있던 "TXTDrop v0.6 시작됨"(구버전 문자열)을 실제 버전으로 교정
+* **전체 검증** 수행: 저장소·소스·배포·런타임 E2E·연계 서비스 5개 영역 점검
+  * 자동 중복제거를 설치본에서 처음 실동작 검증 (동일 클립보드 2회 저장 → 2차분 100% 유사 판정, trash 이동 확인)
+  * **회귀 발견·수정**: svil-ai-work `tts_core.py` 통합(bd22dc9) 때 "RVC 실패 시 원본 폴백" 정책(b25545a)이 유실되어 RVC 서버(:7865) 다운 시 낭독이 502로 완전 실패하던 문제. TXTDrop 낭독과 MCP `svil_tts_speak` 공통 영향 — 수정·커밋(`784c483`)·재검증 완료
+  * TXTAIMemory 원장의 검증용 테스트 조각 정리(`/forget`)
+* 상세: `docs\reports\검증보고_20260710_전체검증_ClaudeCode.md`

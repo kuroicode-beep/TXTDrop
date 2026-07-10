@@ -147,3 +147,18 @@
 * 중복제거, trash, dedup, difflib
 * TXTBrain 연계, 내용 해시 중복 차단
 * ollama_autostart, ollama 새로고침, PyInstaller onedir, build.bat, 첫 실행 데드락, os._exit
+
+### 2026-07-10 SemVer 적용 + 전체 검증
+
+요약:
+
+* `version.py` 신설, 설정 창에 버전 표시 + 업데이트 히스토리 대화상자, 하드코딩된 구버전 문자열 교정 (v0.8.0)
+* 저장소·소스·배포·런타임 E2E·연계 서비스 전체 검증. 자동 중복제거 설치본 최초 실동작 확인
+* **회귀 발견·수정**: svil-ai-work `tts_core.py`에서 RVC 실패 시 원본 폴백 정책이 유실되어 있던 것을 발견, 수정(`784c483`) — TXTDrop 낭독·MCP `svil_tts_speak` 공통 영향 해결
+* TXTAIMemory 테스트 데이터 정리
+
+관련 파일:
+
+* `version.py`, `main.py`, `settings_window.py`, `i18n.py` (TXTDrop)
+* `tts_system/tts_core.py` (svil-ai-work, 별도 저장소)
+* `docs\reports\검증보고_20260710_전체검증_ClaudeCode.md`
