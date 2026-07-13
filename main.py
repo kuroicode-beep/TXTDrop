@@ -16,6 +16,7 @@ import pystray
 
 import tk_root as tkr
 import config
+import hotkeys
 import ollama_client
 import tts_client
 import memory_client
@@ -170,10 +171,11 @@ def _grab_selection(old: str, trigger_key: str) -> str:
     trigger_key: 단축키의 마지막 키(예: 낭독="x", AI 기억="m") — 손을 뗄 때까지 대기하는 데 사용.
     """
     # 단축키 보조키에서 손을 뗄 때까지 대기 (최대 1초) — 안 떼면 Ctrl+Shift+<key>가 눌림
+    # (GetAsyncKeyState 기반 — keyboard 훅이 죽어도 동작)
     deadline = time.monotonic() + 1.0
     while time.monotonic() < deadline and (
-        keyboard.is_pressed("ctrl") or keyboard.is_pressed("shift")
-        or keyboard.is_pressed(trigger_key)
+        hotkeys.is_down("ctrl") or hotkeys.is_down("shift")
+        or hotkeys.is_down(trigger_key)
     ):
         time.sleep(0.03)
 
@@ -339,17 +341,66 @@ def _do_ollama_refresh():
     threading.Thread(target=_check, daemon=True).start()
 
 
-# ── Sleep / wake handler ──────────────────────────────────────────────────────
+# ── Hotkey registration (RegisterHotKey 우선, keyboard 라이브러리 폴백) ───────
 
-def _setup_sleep_wake_handler(hotkey_state):
+_kb_fallback: set[str] = set()   # keyboard 라이브러리로 폴백 등록된 단축키
+
+
+def _current_bindings() -> tuple[dict, dict]:
+    """설정에서 현재 단축키 바인딩 {단축키: 콜백}과 {단축키: 라벨}을 만든다."""
+    bindings, labels = {}, {}
+
+    def add(hk, fn, label):
+        hk = (hk or "").strip().lower()
+        if not hk:
+            return
+        if hk in bindings:
+            config.log_add("WARN", "startup",
+                           f"{label} 단축키가 '{labels[hk]}'과(와) 중복 - 건너뜀: {hk}")
+            return
+        bindings[hk] = fn
+        labels[hk]   = label
+
+    add(config.get("hotkey")     or "ctrl+shift+z", drop_clipboard,  "저장")
+    add(config.get("tts_hotkey") or "ctrl+shift+x", speak_clipboard, "낭독")
+    # AI 기억 캡처(TXTAIMemory 연계)는 기본 비활성 — 켜져 있을 때만 등록
+    if config.get_bool("memory_enabled"):
+        add(config.get("memory_hotkey") or "ctrl+shift+m", capture_memory, "AI 기억")
+    return bindings, labels
+
+
+def _apply_hotkeys():
     """
-    No-op placeholder.  Power-broadcast handling is intentionally disabled
-    because registering a custom WNDPROC or message-only window via ctypes
-    causes STATUS_STACK_BUFFER_OVERRUN crashes inside PyInstaller's frozen
-    runtime on 64-bit Windows.  The hotkey stays registered across sleep/wake
-    through Windows' normal keyboard hook persistence.
+    단축키 전체를 RegisterHotKey로 재등록한다.  keyboard 훅과 달리 절전
+    복귀·시스템 부하에도 OS가 등록을 유지한다.  조합이 이미 선점된 경우에만
+    keyboard 라이브러리로 폴백한다.
     """
-    config.log_add("INFO", "startup", "절전 핸들러: 비활성화됨 (안정성 우선)")
+    bindings, labels = _current_bindings()
+
+    for hk in list(_kb_fallback):
+        try:
+            keyboard.remove_hotkey(hk)
+        except Exception:
+            pass
+        _kb_fallback.discard(hk)
+
+    results = hotkeys.apply(bindings)
+    for hk, err in results.items():
+        label = labels[hk]
+        if err is None:
+            config.log_add("INFO", "startup", f"{label} 단축키 등록: {hk}")
+            continue
+        config.log_add("WARN", "startup",
+                       f"{label} 단축키 RegisterHotKey 실패({err}) - keyboard 폴백 시도")
+        try:
+            fn = bindings[hk]
+            keyboard.add_hotkey(
+                hk, lambda fn=fn: threading.Thread(target=fn, daemon=True).start()
+            )
+            _kb_fallback.add(hk)
+            config.log_add("INFO", "startup", f"{label} 단축키 폴백 등록: {hk}")
+        except Exception as e:
+            config.log_add("ERROR", "startup", f"{label} 단축키 등록 실패: {e}")
 
 
 # ── First run ─────────────────────────────────────────────────────────────────
@@ -399,7 +450,10 @@ def _dark_tray_menu(settings_cb, log_cb, dedup_cb, ollama_cb, exit_cb):
         menu.add_command(label=t("tray_ollama_refresh"), command=ollama_cb)
         menu.add_separator()
         menu.add_command(label=t("exit"),               command=exit_cb)
-        menu.tk_popup(cx, cy)
+        try:
+            menu.tk_popup(cx, cy)
+        finally:
+            menu.grab_release()
 
     tkr.call_on_main(_popup)
 
@@ -423,6 +477,11 @@ def _patch_tray_dark_menu(tray, settings_cb, log_cb, dedup_cb, ollama_cb, exit_c
                 _dark_tray_menu(settings_cb, log_cb, dedup_cb, ollama_cb, exit_cb)
 
         tray._on_notify = types.MethodType(_custom_on_notify, tray)
+        # pystray는 __init__에서 _message_handlers 딕셔너리에 원본 바운드
+        # 메서드를 저장해두고 디스패처가 그 딕셔너리만 참조하므로,
+        # 딕셔너리 항목까지 교체해야 패치가 실제로 적용된다
+        tray._message_handlers[_pw.win32.WM_NOTIFY] = tray._on_notify
+        config.log_add("INFO", "startup", "다크 트레이 메뉴 패치 완료")
     except Exception as e:
         config.log_add("WARN", "startup",
                        f"다크 트레이 메뉴 패치 실패 - 네이티브 메뉴 사용: {e}")
@@ -462,91 +521,16 @@ def main():
     # Ollama check in background (always silent)
     threading.Thread(target=_ollama_check, daemon=True).start()
 
-    # Register hotkeys (저장 + 낭독)
-    def _bind(hk, fn):
-        keyboard.add_hotkey(
-            hk, lambda: threading.Thread(target=fn, daemon=True).start()
-        )
-
-    def _register(state, default, fn, label):
-        # 설정된 단축키 등록, 실패 시 기본값으로 폴백
-        try:
-            _bind(state["current"], fn)
-            config.log_add("INFO", "startup", f"{label} 단축키 등록: {state['current']}")
-        except Exception as e:
-            config.log_add("ERROR", "startup", f"{label} 단축키 등록 실패: {e}")
-            state["current"] = default
-            try:
-                _bind(state["current"], fn)
-                config.log_add("INFO", "startup",
-                               f"{label} 기본 단축키로 재등록: {state['current']}")
-            except Exception as e2:
-                config.log_add("ERROR", "startup", f"{label} 기본 단축키도 등록 실패: {e2}")
-
-    hotkey_state     = {"current": config.get("hotkey") or "ctrl+shift+z"}
-    tts_hotkey_state = {"current": config.get("tts_hotkey") or "ctrl+shift+x"}
-    _register(hotkey_state,     "ctrl+shift+z", drop_clipboard,  "저장")
-    _register(tts_hotkey_state, "ctrl+shift+x", speak_clipboard, "낭독")
-
-    # AI 기억 캡처(TXTAIMemory 연계)는 기본 비활성 — 켜져 있을 때만 단축키 등록
-    memory_hotkey_state = {
-        "current": config.get("memory_hotkey") or "ctrl+shift+m",
-        "registered": False,
-    }
-    if config.get_bool("memory_enabled"):
-        _register(memory_hotkey_state, "ctrl+shift+m", capture_memory, "AI 기억")
-        memory_hotkey_state["registered"] = True
-
-    # Sleep / wake handler — must be after tkr.init()
-    _setup_sleep_wake_handler(hotkey_state)
+    # Register hotkeys (저장 + 낭독 + AI 기억) — RegisterHotKey 기반
+    _apply_hotkeys()
 
     # ── Tray callbacks ────────────────────────────────────────────────────────
 
     tray_ref = [None]
 
     def _do_settings():
-        def _rebind(state, new_hk, fn, label):
-            # 설정 저장 후 변경된 단축키만 재등록
-            if new_hk == state["current"]:
-                return
-            try:
-                keyboard.remove_hotkey(state["current"])
-            except Exception:
-                pass
-            try:
-                _bind(new_hk, fn)
-                config.log_add("INFO", "startup",
-                               f"{label} 단축키 변경: {state['current']} -> {new_hk}")
-                state["current"] = new_hk
-            except Exception as e:
-                config.log_add("ERROR", "startup", f"{label} 단축키 변경 실패: {e}")
-
-        def _rebind_memory():
-            # AI 기억은 활성화 토글에 따라 등록/해제도 함께 처리
-            enabled = config.get_bool("memory_enabled")
-            new_hk  = config.get("memory_hotkey") or "ctrl+shift+m"
-            if memory_hotkey_state["registered"]:
-                if not enabled:
-                    try:
-                        keyboard.remove_hotkey(memory_hotkey_state["current"])
-                    except Exception:
-                        pass
-                    memory_hotkey_state["registered"] = False
-                    config.log_add("INFO", "startup", "AI 기억 단축키 해제됨 (비활성화)")
-                elif new_hk != memory_hotkey_state["current"]:
-                    _rebind(memory_hotkey_state, new_hk, capture_memory, "AI 기억")
-            elif enabled:
-                memory_hotkey_state["current"] = new_hk
-                _register(memory_hotkey_state, "ctrl+shift+m", capture_memory, "AI 기억")
-                memory_hotkey_state["registered"] = True
-
-        def on_save():
-            _rebind(hotkey_state,     config.get("hotkey") or "ctrl+shift+z",
-                    drop_clipboard,  "저장")
-            _rebind(tts_hotkey_state, config.get("tts_hotkey") or "ctrl+shift+x",
-                    speak_clipboard, "낭독")
-            _rebind_memory()
-        settings_window.open_settings(on_save=on_save)
+        # 설정 저장 후 단축키 전체 재등록 (변경·토글 모두 반영)
+        settings_window.open_settings(on_save=_apply_hotkeys)
 
     def _do_log():
         log_window.open_log()
@@ -556,6 +540,7 @@ def main():
 
     def _do_exit():
         config.log_add("INFO", "startup", "TXTDrop 종료됨")
+        hotkeys.stop()
         keyboard.unhook_all()
         time.sleep(0.15)
         if tray_ref[0]:

@@ -1,9 +1,10 @@
 # version.py — 단일 버전 소스 (SVIL 앱 버전 규칙, 2026-07-08 지정)
-APP_VERSION   = "0.8.0"
+APP_VERSION   = "0.8.1"
 VERSION_LABEL = f"v{APP_VERSION}"
 
 # (버전, 날짜, 요약) — 최신순. 기능 추가 시마다 맨 위에 추가한다.
 VERSION_HISTORY = [
+    ("0.8.1", "2026-07-13", "단축키 엔진을 RegisterHotKey로 교체(절전·부하에도 유지), 트레이 다크 메뉴 미적용 수정"),
     ("0.8.0", "2026-07-10", "AI 기억 캡처(Ctrl+Shift+M) 추가 — TXTAIMemory 연계, 기본 비활성"),
     ("0.7.1", "2026-07-10", "TTS 낭독 서버 자동 기동 추가 — MCP svil_tts_speak과 동일 경로로 정합"),
     ("0.7.0", "2026-07-08", "TTS 낭독(Ctrl+Shift+X), 저장 기록 중복제거(휴지통) 추가"),
