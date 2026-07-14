@@ -26,6 +26,7 @@ DEFAULTS = {
     "memory_enabled":    "false",
     "memory_hotkey":     "ctrl+shift+m",
     "memory_char_limit": "8000",
+    "memory_pairing_token": "",
 }
 
 # In-memory cache — avoids repeated DB opens for read-heavy hot path

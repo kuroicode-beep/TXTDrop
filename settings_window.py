@@ -87,6 +87,7 @@ def _run(root, on_save):
     v_dedup_auto   = tk.BooleanVar(value=config.get_bool("dedup_auto"))
     v_memory_enabled = tk.BooleanVar(value=config.get_bool("memory_enabled"))
     v_memory_hotkey  = tk.StringVar(value=config.get("memory_hotkey") or "ctrl+shift+m")
+    v_memory_token   = tk.StringVar(value=config.get("memory_pairing_token") or "")
     v_lang         = tk.StringVar(value=config.get("language") or "ko")
 
     # ── Layout ────────────────────────────────────────────────────────────────
@@ -131,6 +132,8 @@ def _run(root, on_save):
     _section(body, t("sec_memory"))
     _check(body, t("chk_memory_enabled"), v_memory_enabled)
     _hotkey_row(body, t("lbl_memory_hotkey"), v_memory_hotkey, win)
+    _input_row(body, t("lbl_memory_token"), v_memory_token, width=36, show="*")
+    _hint_label(body, t("hint_memory_token"))
 
     # ── Section: AI ───────────────────────────────────────────────────────────
     ai_hdr = tk.Frame(body, bg=_BG)
@@ -279,6 +282,7 @@ def _run(root, on_save):
         config.set_bool("dedup_auto",       v_dedup_auto.get())
         config.set_bool("memory_enabled",   v_memory_enabled.get())
         config.set("memory_hotkey",         v_memory_hotkey.get().strip() or "ctrl+shift+m")
+        config.set("memory_pairing_token",  v_memory_token.get().strip())
         config.set("language",          v_lang.get())
 
         msg = t("saved")
@@ -359,15 +363,25 @@ def _folder_row(parent, label: str, var: tk.StringVar, win):
               cursor="hand2").pack(side="left")
 
 
-def _input_row(parent, label: str, var: tk.StringVar, width: int = 28):
+def _input_row(parent, label: str, var: tk.StringVar, width: int = 28, show: str | None = None):
     row = tk.Frame(parent, bg=_BG)
     row.pack(fill="x", pady=3)
     tk.Label(row, text=label, bg=_BG, fg=_FG,
              font=("Malgun Gothic", 10), width=16, anchor="w").pack(side="left")
-    tk.Entry(row, textvariable=var, bg=_BG3, fg=_FG,
+    entry = tk.Entry(row, textvariable=var, bg=_BG3, fg=_FG,
              insertbackground=_FG, relief="flat", bd=0,
              highlightthickness=1, highlightbackground=_BORDER,
-             highlightcolor=_ACCENT, width=width).pack(side="left")
+             highlightcolor=_ACCENT, width=width)
+    if show:
+        entry.config(show=show)
+    entry.pack(side="left")
+
+
+def _hint_label(parent, text: str):
+    """작은 회색 보조 설명 텍스트(입력 필드 아래 용도)."""
+    tk.Label(parent, text=text, bg=_BG, fg=_DIM,
+             font=("Malgun Gothic", 9), wraplength=440, justify="left",
+             anchor="w").pack(fill="x", pady=(0, 4))
 
 
 def _hotkey_row(parent, label: str, var: tk.StringVar, win):
