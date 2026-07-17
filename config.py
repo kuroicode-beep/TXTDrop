@@ -26,6 +26,12 @@ DEFAULTS = {
     "memory_enabled":    "false",
     "memory_hotkey":     "ctrl+shift+m",
     "memory_char_limit": "8000",
+    # TTS 낭독 설정 (SVIL TTS 설정 표준) — 빈 값/auto는 서버 기본을 따른다
+    "tts_engine":        "auto",
+    "tts_voice":         "",
+    "tts_speed":         "1.0",
+    "tts_use_rvc":       "1",     # 서버 pipeline 기본이 RVC ON이므로 기존 동작 보존
+    "tts_rvc_model":     "",      # '' = 자동 (서버가 보이스에 맞춰 선택)
 }
 
 # In-memory cache — avoids repeated DB opens for read-heavy hot path

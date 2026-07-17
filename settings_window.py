@@ -10,6 +10,7 @@ from tkinter import filedialog, messagebox, ttk
 
 import config
 import ollama_client
+import tts_client
 from i18n import t
 from version import VERSION_LABEL, VERSION_HISTORY
 
@@ -126,6 +127,161 @@ def _run(root, on_save):
     _section(body, t("sec_hotkey"))
     _hotkey_row(body, t("lbl_hotkey"),     v_hotkey,     win)
     _hotkey_row(body, t("lbl_tts_hotkey"), v_tts_hotkey, win)
+
+    # ── Section: 낭독 (SVIL TTS) ─────────────────────────────────────────────
+    tts_hdr = tk.Frame(body, bg=_BG)
+    tts_hdr.pack(fill="x", pady=(12, 2))
+    tk.Label(tts_hdr, text=t("sec_tts"), bg=_BG, fg=_ACCENT,
+             font=("Malgun Gothic", 10, "bold")).pack(side="left")
+    tts_srv_lbl = tk.Label(tts_hdr, text="  " + t("tts_status_checking"),
+                           bg=_BG, fg=_DIM, font=("Malgun Gothic", 9))
+    tts_srv_lbl.pack(side="left", padx=(8, 0))
+    tk.Frame(body, bg=_BORDER, height=1).pack(fill="x", pady=(2, 4))
+
+    # 선택 표시용 변수 (라벨) + 라벨→실제 값 매핑
+    v_tts_engine = tk.StringVar()
+    v_tts_voice  = tk.StringVar()
+    v_tts_rvc    = tk.StringVar()
+    v_tts_speed  = tk.StringVar(value=config.get("tts_speed") or "1.0")
+    engine_map: dict[str, str] = {}
+    voice_map:  dict[str, str] = {}
+    rvc_map:    dict[str, str] = {}   # 값: "off"=사용 안 함, ""=자동, 그 외=모델명
+
+    cb_engine = _combo_row(body, t("lbl_tts_engine"), v_tts_engine, width=30)
+    cb_voice  = _combo_row(body, t("lbl_tts_voice"),  v_tts_voice,  width=30)
+    cb_rvc    = _combo_row(body, t("lbl_tts_rvc"),    v_tts_rvc,    width=30)
+    rvc_hint  = tk.Label(body, text="", bg=_BG, fg="#f28b82",
+                         font=("Malgun Gothic", 9), anchor="w")
+
+    speed_row = tk.Frame(body, bg=_BG)
+    speed_row.pack(fill="x", pady=3)
+    tk.Label(speed_row, text=t("lbl_tts_speed"), bg=_BG, fg=_FG,
+             font=("Malgun Gothic", 10), width=16, anchor="w").pack(side="left")
+    speeds = ["0.7", "0.8", "0.9", "1.0", "1.1", "1.2", "1.3", "1.4", "1.5"]
+    if v_tts_speed.get() not in speeds:
+        speeds.append(v_tts_speed.get())
+    ttk.Combobox(speed_row, textvariable=v_tts_speed, values=speeds,
+                 state="readonly", width=6).pack(side="left")
+
+    def _fill(combo, var, mapping, options, current):
+        """콤보 채우기 — 저장된 값이 목록에 없으면 (사용 불가)로 유지 (keepSelected)."""
+        mapping.clear()
+        labels, sel = [], None
+        for value, label in options:
+            mapping[label] = value
+            labels.append(label)
+            if value == current:
+                sel = label
+        if sel is None:
+            sel = f"{current} {t('tts_unavailable')}"
+            mapping[sel] = current
+            labels.append(sel)
+        combo.config(values=labels)
+        var.set(sel)
+
+    cur_engine = (config.get("tts_engine") or "auto").strip()
+    cur_voice  = (config.get("tts_voice") or "").strip()
+    cur_rvc    = "off" if not config.get_bool("tts_use_rvc") \
+                 else (config.get("tts_rvc_model") or "").strip()
+
+    # 서버 조회 전 기본 옵션 (조회 실패해도 저장된 값이 유지되도록)
+    _fill(cb_engine, v_tts_engine, engine_map,
+          [("auto", t("tts_engine_auto")), ("gptsovits", "gptsovits"),
+           ("qwen3", "qwen3")], cur_engine)
+    _fill(cb_voice, v_tts_voice, voice_map,
+          [("", t("tts_voice_default"))], cur_voice)
+    _fill(cb_rvc, v_tts_rvc, rvc_map,
+          [("off", t("tts_rvc_off")), ("", t("tts_rvc_auto"))], cur_rvc)
+
+    def _load_tts_caps():
+        # 엔진 가용성은 보이스 목록이 아니라 /api/tts/status가 진실
+        caps = tts_client.capabilities()
+
+        def _apply():
+            try:
+                if not caps["online"]:
+                    tts_srv_lbl.config(text="  " + t("tts_status_offline"), fg="#f28b82")
+                    return
+                tts_srv_lbl.config(text="  " + t("tts_status_online"), fg="#81c995")
+
+                default = caps["default_engine"]
+                auto_lbl = t("tts_engine_auto") + (f" — {default}" if default else "")
+                eng_opts = [("auto", auto_lbl)]
+                for eng in ("gptsovits", "qwen3"):
+                    lbl = eng if caps["engines"].get(eng) \
+                          else f"{eng} {t('tts_offline_suffix')}"
+                    eng_opts.append((eng, lbl))
+                _fill(cb_engine, v_tts_engine, engine_map, eng_opts, cur_engine)
+
+                voice_opts = [("", t("tts_voice_default"))]
+                src_names = {"model": "학습", "sample": "샘플"}
+                for v in caps["voices"]:
+                    name = v.get("name") or ""
+                    if not name:
+                        continue
+                    src  = v.get("source") or v.get("type") or ""
+                    tags = "·".join(x for x in (src_names.get(src, src),
+                                                v.get("tone")) if x)
+                    voice_opts.append((name, f"{name} ({tags})" if tags else name))
+                _fill(cb_voice, v_tts_voice, voice_map, voice_opts, cur_voice)
+
+                rvc_opts = [("off", t("tts_rvc_off")), ("", t("tts_rvc_auto"))]
+                for m in caps["rvc_models"]:
+                    name = m.get("name") or ""
+                    if name:
+                        rvc_opts.append((name, name))
+                _fill(cb_rvc, v_tts_rvc, rvc_map, rvc_opts, cur_rvc)
+                if not caps["rvc_online"]:
+                    rvc_hint.config(text=t("tts_rvc_offline_hint"))
+                    rvc_hint.pack(fill="x", padx=(0, 0))
+            except tk.TclError:
+                pass  # 조회 중 창이 닫힘
+
+        win.after(0, _apply)
+
+    threading.Thread(target=_load_tts_caps, daemon=True).start()
+
+    # ▶ 미리듣기 — 저장 전 조합을 그대로 합성해 재생, 실패 detail을 그대로 노출
+    prev_row = tk.Frame(body, bg=_BG)
+    prev_row.pack(fill="x", pady=(4, 3))
+    prev_lbl   = tk.Label(prev_row, text="", bg=_BG, fg=_DIM,
+                          font=("Malgun Gothic", 9), anchor="w")
+    prev_state = {"busy": False}
+
+    def do_preview():
+        if prev_state["busy"]:
+            return
+        prev_state["busy"] = True
+        prev_btn.config(state="disabled")
+        prev_lbl.config(text=t("tts_preview_running"), fg=_DIM)
+        engine = engine_map.get(v_tts_engine.get(), "auto")
+        voice  = voice_map.get(v_tts_voice.get(), "")
+        rvc    = rvc_map.get(v_tts_rvc.get(), "")
+        speed  = v_tts_speed.get()
+
+        def _work():
+            ok, err = tts_client.preview(engine=engine, voice=voice,
+                                         speed=speed, rvc=rvc)
+
+            def _done():
+                prev_state["busy"] = False
+                try:
+                    prev_btn.config(state="normal")
+                    if ok:
+                        prev_lbl.config(text=t("tts_preview_done"), fg="#81c995")
+                    else:
+                        prev_lbl.config(text=err, fg="#f28b82")
+                except tk.TclError:
+                    pass
+            win.after(0, _done)
+
+        threading.Thread(target=_work, daemon=True).start()
+
+    prev_btn = tk.Button(prev_row, text=t("btn_tts_preview"), command=do_preview,
+                         bg=_BG3, fg=_FG, font=("Malgun Gothic", 10),
+                         relief="flat", bd=0, padx=16, pady=6, cursor="hand2")
+    prev_btn.pack(side="left")
+    prev_lbl.pack(side="left", padx=(10, 0))
 
     # ── Section: AI 기억 (TXTAIMemory 연계) ─────────────────────────────────────
     _section(body, t("sec_memory"))
@@ -273,6 +429,20 @@ def _run(root, on_save):
         config.set("filename_prefix",   v_prefix.get().strip() or "txtdrop")
         config.set("hotkey",            v_hotkey.get().strip() or "ctrl+shift+z")
         config.set("tts_hotkey",        v_tts_hotkey.get().strip() or "ctrl+shift+x")
+
+        # TTS 낭독 설정 — 라벨을 실제 값으로 되돌려 저장
+        config.set("tts_engine", engine_map.get(v_tts_engine.get(), "auto") or "auto")
+        config.set("tts_voice",  voice_map.get(v_tts_voice.get(), ""))
+        spd = v_tts_speed.get().strip() or "1.0"
+        try:
+            float(spd)
+        except ValueError:
+            spd = "1.0"
+        config.set("tts_speed", spd)
+        rvc_val = rvc_map.get(v_tts_rvc.get(), "")
+        config.set_bool("tts_use_rvc", rvc_val != "off")
+        config.set("tts_rvc_model", "" if rvc_val == "off" else rvc_val)
+
         config.set("ollama_model",      v_model.get())
         config.set_bool("ollama_autostart", v_autostart.get())
         config.set_bool("sound_enabled",    v_sound.get())
@@ -368,6 +538,17 @@ def _input_row(parent, label: str, var: tk.StringVar, width: int = 28):
              insertbackground=_FG, relief="flat", bd=0,
              highlightthickness=1, highlightbackground=_BORDER,
              highlightcolor=_ACCENT, width=width).pack(side="left")
+
+
+def _combo_row(parent, label: str, var: tk.StringVar, width: int = 28) -> ttk.Combobox:
+    row = tk.Frame(parent, bg=_BG)
+    row.pack(fill="x", pady=3)
+    tk.Label(row, text=label, bg=_BG, fg=_FG,
+             font=("Malgun Gothic", 10), width=16, anchor="w").pack(side="left")
+    cb = ttk.Combobox(row, textvariable=var, values=[],
+                      state="readonly", width=width)
+    cb.pack(side="left")
+    return cb
 
 
 def _hotkey_row(parent, label: str, var: tk.StringVar, win):
