@@ -150,8 +150,10 @@ def _run(root, on_save):
     cb_engine = _combo_row(body, t("lbl_tts_engine"), v_tts_engine, width=30)
     cb_voice  = _combo_row(body, t("lbl_tts_voice"),  v_tts_voice,  width=30)
     cb_rvc    = _combo_row(body, t("lbl_tts_rvc"),    v_tts_rvc,    width=30)
-    rvc_hint  = tk.Label(body, text="", bg=_BG, fg="#f28b82",
+    # RVC 오프라인 힌트 — 지금 미리 pack해야 창 높이에 포함되고 제자리에 놓인다
+    rvc_hint  = tk.Label(body, text=" ", bg=_BG, fg="#f28b82",
                          font=("Malgun Gothic", 9), anchor="w")
+    rvc_hint.pack(fill="x")
 
     speed_row = tk.Frame(body, bg=_BG)
     speed_row.pack(fill="x", pady=3)
@@ -204,6 +206,11 @@ def _run(root, on_save):
                     return
                 tts_srv_lbl.config(text="  " + t("tts_status_online"), fg="#81c995")
 
+                # 로드(수 초) 중 사용자가 이미 바꾼 선택은 되돌리지 않는다
+                sel_engine = engine_map.get(v_tts_engine.get(), cur_engine)
+                sel_voice  = voice_map.get(v_tts_voice.get(),   cur_voice)
+                sel_rvc    = rvc_map.get(v_tts_rvc.get(),       cur_rvc)
+
                 default = caps["default_engine"]
                 auto_lbl = t("tts_engine_auto") + (f" — {default}" if default else "")
                 eng_opts = [("auto", auto_lbl)]
@@ -211,7 +218,7 @@ def _run(root, on_save):
                     lbl = eng if caps["engines"].get(eng) \
                           else f"{eng} {t('tts_offline_suffix')}"
                     eng_opts.append((eng, lbl))
-                _fill(cb_engine, v_tts_engine, engine_map, eng_opts, cur_engine)
+                _fill(cb_engine, v_tts_engine, engine_map, eng_opts, sel_engine)
 
                 voice_opts = [("", t("tts_voice_default"))]
                 src_names = {"model": "학습", "sample": "샘플"}
@@ -223,17 +230,16 @@ def _run(root, on_save):
                     tags = "·".join(x for x in (src_names.get(src, src),
                                                 v.get("tone")) if x)
                     voice_opts.append((name, f"{name} ({tags})" if tags else name))
-                _fill(cb_voice, v_tts_voice, voice_map, voice_opts, cur_voice)
+                _fill(cb_voice, v_tts_voice, voice_map, voice_opts, sel_voice)
 
                 rvc_opts = [("off", t("tts_rvc_off")), ("", t("tts_rvc_auto"))]
                 for m in caps["rvc_models"]:
                     name = m.get("name") or ""
                     if name:
                         rvc_opts.append((name, name))
-                _fill(cb_rvc, v_tts_rvc, rvc_map, rvc_opts, cur_rvc)
+                _fill(cb_rvc, v_tts_rvc, rvc_map, rvc_opts, sel_rvc)
                 if not caps["rvc_online"]:
                     rvc_hint.config(text=t("tts_rvc_offline_hint"))
-                    rvc_hint.pack(fill="x", padx=(0, 0))
             except tk.TclError:
                 pass  # 조회 중 창이 닫힘
 
