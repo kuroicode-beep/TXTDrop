@@ -260,41 +260,19 @@ def capture_memory():
 # ── Ollama startup check (always silent) ─────────────────────────────────────
 
 def _ollama_check():
-    """On startup: check Ollama, and silently start it only when enabled."""
+    """
+    On startup: 상태 확인·로그만 남긴다.
+    자동 시작(페일오버) 없음 — 서버가 죽어 있으면 그대로 두고, AI 제목 없이
+    클립보드 첫 줄 파일명으로 동작한다. 기동은 트레이 'Ollama 새로고침'으로만.
+    """
     config.log_add("INFO", "ollama", "서버 상태 확인 중...")
     if ollama_client.is_running_cached():
         models = ollama_client.list_models()
         config.log_add("INFO", "ollama",
                        f"서버 실행 중 - 모델 {len(models)}개: {', '.join(models[:3])}")
-        return
-
-    if not config.get_bool("ollama_autostart"):
-        config.log_add("INFO", "ollama", "서버 미실행 - 자동 시작 비활성화됨")
-        return
-
-    config.log_add("INFO", "ollama", "서버 미실행 - 자동 시작 시도")
-    try:
-        subprocess.Popen(
-            ["ollama", "serve"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            creationflags=subprocess.CREATE_NO_WINDOW,
-        )
-        config.log_add("INFO", "ollama", "ollama serve 시작됨")
-    except FileNotFoundError:
-        config.log_add("INFO", "ollama", "ollama 미설치 - 건너뜀")
-        return
-
-    def _wait_and_refresh():
-        time.sleep(5)
-        ollama_client._refresh_cache()
-        if ollama_client._cached_running:
-            models = ollama_client.list_models()
-            config.log_add("INFO", "ollama",
-                           f"자동 시작 완료 - 모델 {len(models)}개: {', '.join(models[:3])}")
-        else:
-            config.log_add("WARN", "ollama", "자동 시작 후 서버 응답 없음")
-    threading.Thread(target=_wait_and_refresh, daemon=True).start()
+    else:
+        config.log_add("INFO", "ollama",
+                       "서버 미실행 - AI 제목 생략, 클립보드 첫 줄 파일명 사용")
 
 
 # ── Ollama manual refresh (from tray menu) ────────────────────────────────────

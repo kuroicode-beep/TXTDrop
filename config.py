@@ -20,7 +20,6 @@ DEFAULTS = {
     "tts_hotkey":        "ctrl+shift+x",
     "language":          "ko",
     "ollama_model":      "llama3.2",
-    "ollama_autostart":  "true",
     "dedup_auto":        "true",
     "dedup_threshold":   "90",
     "memory_enabled":    "false",

@@ -50,7 +50,6 @@ _STRINGS: dict[str, dict[str, str]] = {
         "lbl_model":          "Ollama 모델",
         "lbl_language":       "언어",
         # settings checks / buttons
-        "chk_autostart":      "TXTDrop 실행 시 Ollama 자동 시작",
         "chk_sound":          "저장 성공 시 효과음 재생",
         "btn_backup":         "DB 백업",
         "btn_restore":        "DB 복원",
@@ -189,7 +188,6 @@ _STRINGS: dict[str, dict[str, str]] = {
         "lbl_model":          "Ollama Model",
         "lbl_language":       "Language",
         # settings checks / buttons
-        "chk_autostart":      "Auto-start Ollama on launch",
         "chk_sound":          "Play sound effect on save",
         "btn_backup":         "Backup DB",
         "btn_restore":        "Restore DB",

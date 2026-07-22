@@ -83,7 +83,6 @@ def _run(root, on_save):
     v_hotkey       = tk.StringVar(value=config.get("hotkey") or "ctrl+shift+z")
     v_tts_hotkey   = tk.StringVar(value=config.get("tts_hotkey") or "ctrl+shift+x")
     v_model        = tk.StringVar(value=config.get("ollama_model") or "llama3")
-    v_autostart    = tk.BooleanVar(value=config.get_bool("ollama_autostart"))
     v_sound        = tk.BooleanVar(value=config.get_bool("sound_enabled"))
     v_dedup_auto   = tk.BooleanVar(value=config.get_bool("dedup_auto"))
     v_memory_enabled = tk.BooleanVar(value=config.get_bool("memory_enabled"))
@@ -360,8 +359,6 @@ def _run(root, on_save):
     threading.Thread(target=_check_ollama_status, daemon=True).start()
     v_model.trace_add("write", _update_model_status)
 
-    _check(body, t("chk_autostart"), v_autostart)
-
     # ── Section: 중복제거 ─────────────────────────────────────────────────────
     _section(body, t("sec_dedup"))
     _check(body, t("chk_dedup_auto"), v_dedup_auto)
@@ -450,7 +447,6 @@ def _run(root, on_save):
         config.set("tts_rvc_model", "" if rvc_val == "off" else rvc_val)
 
         config.set("ollama_model",      v_model.get())
-        config.set_bool("ollama_autostart", v_autostart.get())
         config.set_bool("sound_enabled",    v_sound.get())
         config.set_bool("dedup_auto",       v_dedup_auto.get())
         config.set_bool("memory_enabled",   v_memory_enabled.get())
