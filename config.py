@@ -25,6 +25,7 @@ DEFAULTS = {
     "memory_enabled":    "false",
     "memory_hotkey":     "ctrl+shift+m",
     "memory_char_limit": "8000",
+    "memory_pairing_token": "",
     # TTS 낭독 설정 (SVIL TTS 설정 표준) — 빈 값/auto는 서버 기본을 따른다
     "tts_engine":        "auto",
     "tts_voice":         "",

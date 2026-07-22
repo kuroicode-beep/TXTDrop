@@ -75,17 +75,31 @@ def capture(text: str, origin_app: str | None = None) -> tuple[bool, str, bool]:
 
     config.log_add("INFO", "memory",
                    f"캡처 요청 → {len(text)}자" + (" (상한 초과 잘림)" if truncated else ""))
+    headers = {"Content-Type": "application/json"}
+    token = (config.get("memory_pairing_token") or "").strip()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     try:
         req = urllib.request.Request(
             f"{MEMORY_URL}/write",
             data=payload,
-            headers={"Content-Type": "application/json"},
+            headers=headers,
             method="POST",
         )
         with urllib.request.urlopen(req, timeout=15) as r:
             result = json.loads(r.read())
             config.log_add("INFO", "memory", f"캡처 완료 — id={result.get('id')}")
             return True, "", False
+    except urllib.error.HTTPError as e:
+        if e.code == 401:
+            config.log_add("ERROR", "memory",
+                           "전송 실패: 401 (페어링 토큰 없음/불일치 — 설정에서 TXTAIMemory 토큰을 확인하세요)")
+        else:
+            config.log_add("ERROR", "memory", f"전송 실패: HTTP {e.code}")
+        path = _write_fallback(text)
+        if path:
+            return True, t("memory_fallback_saved"), True
+        return False, t("memory_fallback_failed"), False
     except Exception as e:
         config.log_add("ERROR", "memory", f"전송 실패: {type(e).__name__}: {e}")
         path = _write_fallback(text)
