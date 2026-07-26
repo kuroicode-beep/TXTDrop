@@ -25,6 +25,7 @@ import dedup_window
 import sound
 import notify
 import log_window
+import registry_client
 import settings_window
 from i18n import t
 from version import VERSION_LABEL
@@ -489,6 +490,9 @@ def main():
     tkr.init()
 
     config.log_add("INFO", "startup", f"TXTDrop {VERSION_LABEL} 시작됨")
+
+    # SVIL 디스커버리 레지스트리에 자기 항목 기록 — 실패해도 기동을 막지 않는다(내부에서 stderr 로그만)
+    registry_client.register_app()
 
     # First-run folder setup (uses tkr event loop)
     if not config.get("text_save_folder"):
