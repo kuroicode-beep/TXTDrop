@@ -5,7 +5,7 @@ import threading
 import urllib.request
 import urllib.error
 
-OLLAMA_URL = "http://localhost:11434"
+OLLAMA_URL = "http://127.0.0.1:11434"  # localhost는 Windows에서 ::1(IPv6) 우선 해석 - IPv4 전용 Ollama에 연결 지연 유발
 
 _FALLBACK_MODELS = [
     "llama3", "llama3.2", "phi3", "mistral", "gemma3", "qwen2.5",
