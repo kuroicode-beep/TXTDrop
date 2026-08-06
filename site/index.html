@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<!-- TXTDrop 배포 페이지 — 자체 완결형 단일 파일. CDN 금지(폰트·스크립트·스타일 전부 인라인/로컬).
+     문구는 아래 I18N 사전(5개 언어)에서 관리하고 HTML엔 data-i18n 키만 둔다. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TXTDrop — One-hotkey clipboard saver for Windows</title>
+<meta name="description" content="TXTDrop lives in the Windows system tray. Press Ctrl+Shift+Z and your clipboard — text or image — is saved to a file instantly. Local AI names the file for you.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><circle cx='32' cy='32' r='28' fill='%2316161d' stroke='%23b3ddff' stroke-width='3'/><text x='32' y='42' text-anchor='middle' font-size='26' fill='%23b3ddff' font-family='sans-serif'>T</text></svg>">
+<style>
+  :root {
+    --bg: #0d0d12;
+    --surface: #16161d;
+    --surface-2: #1f1f2a;
+    --border: #3a3a48;
+    --border-strong: #6b6b82;
+    --text: #f5f5f7;
+    --text-sub: #c9c9d4;
+    --accent: #7ec8ff;
+    --accent-strong: #b3ddff;
+    --accent-max: #d6ecff;
+    --positive: #7ee2a8;
+    --warning: #ffd479;
+    --focus: #ffd479;
+    /* 로컬 설치 폰트만 — CDN 금지. 없으면 시스템 산세리프로 폴백. */
+    --font-ui: "LINESeedKR", "Pretendard", "Malgun Gothic", "맑은 고딕",
+               system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: "Consolas", "Cascadia Mono", ui-monospace, "Malgun Gothic", monospace;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    * { transition: none !important; animation: none !important; }
+  }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: var(--font-ui); font-size: 18px; line-height: 1.8;
+    letter-spacing: 0.02em; word-break: keep-all; overflow-wrap: break-word;
+  }
+  .wrap { max-width: 940px; margin: 0 auto; padding: 0 20px; }
+  a { color: var(--accent); }
+  a:hover { color: var(--accent-max); }
+  :focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; border-radius: 4px; }
+  code, .mono, .ver { font-family: var(--font-mono); }
+  kbd {
+    font-family: var(--font-mono); font-size: 0.9em; color: var(--accent-strong);
+    background: var(--surface-2); border: 1px solid var(--border-strong);
+    border-radius: 6px; padding: 2px 8px; white-space: nowrap;
+  }
+
+  header { border-bottom: 1px solid var(--border); background: var(--surface); position: sticky; top: 0; z-index: 10; }
+  .bar { display: flex; align-items: center; gap: 16px; min-height: 68px; flex-wrap: wrap; }
+  .brand { display: flex; align-items: center; gap: 10px; margin-right: auto; }
+  .brand svg { width: 30px; height: 30px; flex: none; }
+  .brand b { font-weight: normal; font-size: 1.25rem; }
+  .ver { color: var(--accent); font-size: 0.85rem; }
+
+  /* 언어 스위처 — 색만이 아니라 밑줄로도 선택 상태 표시 */
+  .langs { display: flex; gap: 4px; flex-wrap: wrap; }
+  .langs button {
+    min-height: 40px; padding: 6px 12px; background: transparent; color: var(--text-sub);
+    border: 1.5px solid transparent; border-radius: 999px; font-family: inherit; font-size: 0.92rem;
+    cursor: pointer; border-bottom: 3px solid transparent;
+  }
+  .langs button:hover { color: var(--accent-strong); border-color: var(--border-strong); }
+  .langs button[aria-current="true"] { color: var(--accent-strong); border-bottom-color: var(--accent); background: var(--surface-2); }
+
+  .hero { padding: 72px 0 56px; text-align: center; }
+  .hero h1 { font-size: 2.2rem; margin: 0 0 12px; font-weight: normal; }
+  .tagline { font-size: 1.35rem; color: var(--text-sub); margin: 0 auto 36px; max-width: 34em; }
+  .cta { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; align-items: center; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+    min-height: 56px; padding: 12px 28px; border-radius: 12px; border: 2px solid var(--border-strong);
+    background: var(--surface-2); color: var(--text); font-family: inherit; font-size: 1.05rem; text-decoration: none;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent-strong); }
+  .btn-primary { background: var(--accent-strong); color: #000; border-color: var(--accent-strong); }
+  .btn-primary:hover { background: var(--accent-max); color: #000; border-color: var(--accent-max); }
+  .meta { margin-top: 18px; color: var(--text-sub); font-size: 0.95rem; }
+  .meta .mono { color: var(--text); }
+
+  section { padding: 44px 0; border-top: 1px solid var(--border); }
+  h2 { font-size: 1.7rem; font-weight: normal; margin: 0 0 8px; color: var(--accent-strong); }
+  .sub { color: var(--text-sub); margin: 0 0 28px; }
+
+  .grid { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 22px 24px; }
+  .card h3 { font-size: 1.35rem; font-weight: normal; margin: 0 0 6px; }
+  .card p { margin: 0; color: var(--text-sub); font-size: 0.97rem; }
+
+  /* 사용법 3단계 */
+  .steps { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); counter-reset: step; }
+  .step { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 22px 24px; }
+  .step .n {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 40px; height: 40px; border-radius: 50%;
+    background: var(--surface-2); border: 2px solid var(--accent);
+    color: var(--accent-strong); font-family: var(--font-mono); font-size: 1.1rem; margin-bottom: 10px;
+  }
+  .step h3 { font-size: 1.2rem; font-weight: normal; margin: 0 0 6px; }
+  .step p { margin: 0; color: var(--text-sub); font-size: 0.97rem; }
+
+  .links { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+  .link-card {
+    display: flex; flex-direction: column; gap: 4px; min-height: 56px; padding: 20px 22px;
+    background: var(--surface); border: 2px solid var(--border-strong); border-radius: 12px;
+    text-decoration: none; color: var(--text);
+  }
+  .link-card:hover { border-color: var(--accent); color: var(--accent-strong); }
+  .link-card span { color: var(--text-sub); font-size: 0.9rem; overflow-wrap: anywhere; }
+
+  /* 후원 — svil-donation-section 스킬과 동일 규격 (QR 이미지만, 계좌 텍스트 금지) */
+  .support-card {
+    display: flex; gap: 26px; align-items: center; flex-wrap: wrap;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 24px;
+  }
+  .qr-frame { background: #fff; border-radius: 12px; padding: 14px; flex: none; line-height: 0; }
+  .qr-frame img { display: block; width: 216px; height: 216px; }
+  .qr-meta { display: flex; flex-direction: column; gap: 6px; min-width: 220px; flex: 1; }
+  .qr-meta b { font-weight: normal; font-size: 1.25rem; color: var(--accent-strong); }
+  .qr-meta span { color: var(--text-sub); font-size: 0.97rem; }
+  @media (max-width: 560px) { .support-card { justify-content: center; text-align: center; } .qr-meta { align-items: center; } }
+
+  footer { border-top: 1px solid var(--border); padding: 32px 0 48px; color: var(--text-sub); font-size: 0.9rem; text-align: center; }
+  footer .svil-mission { margin: 0 0 20px; }
+  /* 표준 푸터 링크 — svil-copyright §7 마크업의 .foot-rows */
+  .foot-rows { display: flex; flex-direction: column; gap: 8px; align-items: center; margin: 0 0 20px; }
+  .foot-rows .row { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; justify-content: center; }
+  .foot-rows .k { color: var(--text-sub); font-size: 0.85rem; min-width: 84px; text-align: right; }
+  @media (max-width: 560px) { .foot-rows .k { min-width: 0; text-align: center; } }
+
+  @media (max-width: 640px) {
+    body { font-size: 17px; }
+    .hero { padding: 48px 0 40px; }
+    .hero h1 { font-size: 1.8rem; }
+    .tagline { font-size: 1.15rem; }
+    .btn { width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap bar">
+    <div class="brand">
+      <svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="28" fill="#16161d" stroke="#b3ddff" stroke-width="3"/><text x="32" y="42" text-anchor="middle" font-size="26" fill="#b3ddff" font-family="sans-serif">T</text></svg>
+      <b>TXTDrop</b>
+      <span class="ver">v0.11.0</span>
+    </div>
+    <nav class="langs" aria-label="Language">
+      <button type="button" data-lang="en" lang="en">English</button>
+      <button type="button" data-lang="ko" lang="ko">한국어</button>
+      <button type="button" data-lang="ja" lang="ja">日本語</button>
+      <button type="button" data-lang="zh" lang="zh">中文</button>
+      <button type="button" data-lang="vi" lang="vi">Tiếng Việt</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap hero">
+    <h1 data-i18n="hero_title"></h1>
+    <p class="tagline" data-i18n="hero_tagline"></p>
+    <div class="cta">
+      <a class="btn btn-primary" href="https://github.com/kuroicode-beep/TXTDrop"><span data-i18n="cta_primary"></span></a>
+      <a class="btn" href="mailto:kuroicode@gmail.com"><span data-i18n="cta_secondary"></span></a>
+    </div>
+    <p class="meta"><span data-i18n="meta_a"></span> · <span data-i18n="meta_b"></span> · <span class="mono">Python 3.12</span></p>
+  </div>
+
+  <section>
+    <div class="wrap">
+      <h2 data-i18n="how_title"></h2>
+      <p class="sub" data-i18n="how_sub"></p>
+      <div class="steps">
+        <div class="step"><span class="n" aria-hidden="true">1</span><h3 data-i18n="s1_t"></h3><p data-i18n="s1_d"></p></div>
+        <div class="step"><span class="n" aria-hidden="true">2</span><h3 data-i18n="s2_t"></h3><p data-i18n="s2_d"></p></div>
+        <div class="step"><span class="n" aria-hidden="true">3</span><h3 data-i18n="s3_t"></h3><p data-i18n="s3_d"></p></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2 data-i18n="features_title"></h2>
+      <p class="sub" data-i18n="features_sub"></p>
+      <div class="grid">
+        <div class="card"><h3 data-i18n="f1_t"></h3><p data-i18n="f1_d"></p></div>
+        <div class="card"><h3 data-i18n="f2_t"></h3><p data-i18n="f2_d"></p></div>
+        <div class="card"><h3 data-i18n="f3_t"></h3><p data-i18n="f3_d"></p></div>
+        <div class="card"><h3 data-i18n="f4_t"></h3><p data-i18n="f4_d"></p></div>
+        <div class="card"><h3 data-i18n="f5_t"></h3><p data-i18n="f5_d"></p></div>
+        <div class="card"><h3 data-i18n="f6_t"></h3><p data-i18n="f6_d"></p></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2 data-i18n="links_title"></h2>
+      <p class="sub" data-i18n="links_sub"></p>
+      <div class="links">
+        <a class="link-card" href="https://github.com/kuroicode-beep/TXTDrop"><b data-i18n="link_gh"></b><span class="mono">kuroicode-beep/TXTDrop</span></a>
+        <a class="link-card" href="mailto:kuroicode@gmail.com"><b data-i18n="link_contact"></b><span class="mono">kuroicode@gmail.com</span></a>
+      </div>
+    </div>
+  </section>
+
+  <!-- 후원 섹션 — svil-donation-section 스킬 표준 (QR 이미지만, 계좌 텍스트 금지) -->
+  <section id="support">
+    <div class="wrap">
+      <h2 data-i18n="support_title"></h2>
+      <p class="sub" data-i18n="support_sub"></p>
+      <div class="support-card">
+        <div class="qr-frame">
+          <img src="assets/toss-qr.png" alt="토스 후원 QR — Toss donation QR" width="216" height="216" loading="lazy">
+        </div>
+        <div class="qr-meta">
+          <b data-i18n="support_toss_label"></b>
+          <span data-i18n="support_toss_hint"></span>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- SVIL 공용 푸터 — 정본: svil-copyright 스킬 §7. 라이선스 파일이 없는 프로젝트라 foot_license 줄은 제외. -->
+<footer>
+  <div class="wrap">
+    <p class="svil-mission" data-i18n="svil_mission"></p>
+    <div class="foot-rows">
+      <div class="row"><span class="k" data-i18n="foot_contact"></span><a href="mailto:kuroicode@gmail.com">kuroicode@gmail.com</a></div>
+      <div class="row"><span class="k" data-i18n="foot_blog"></span><a href="https://ghost-production-0ec2.up.railway.app/" target="_blank" rel="noopener">인블루의 로그 보관소</a></div>
+      <div class="row"><span class="k" data-i18n="foot_home"></span><a href="https://svil.dev/" target="_blank" rel="noopener">SVIL</a></div>
+      <div class="row"><span class="k" data-i18n="foot_youtube"></span><a href="https://www.youtube.com/@SVIL-LAB" target="_blank" rel="noopener">@SVIL-LAB</a></div>
+      <div class="row"><span class="k" data-i18n="foot_github"></span><a href="https://github.com/kuroicode-beep" target="_blank" rel="noopener">kuroicode-beep</a></div>
+    </div>
+    <p class="copyright">© <span id="svil-year">2026</span> SVIL Singularity Visual Intelligence Lab.</p>
+  </div>
+</footer>
+<script>
+  // 저작권 연도는 렌더 시점 기준. HTML 값은 JS 비활성 환경용 폴백이다.
+  document.getElementById('svil-year').textContent = new Date().getFullYear();
+</script>
+
+<script>
+// 다국어 사전. 영어(en)가 디폴트/폴백. 모든 언어의 키 집합이 동일해야 한다(누락 시 en으로 폴백).
+// 사람/AI 이름·고유명사·단축키·코드·이메일은 번역하지 않는다.
+const I18N = {
+  en: {
+    _title: "TXTDrop — One-hotkey clipboard saver for Windows",
+    hero_title: "Press a hotkey. Clipboard saved.",
+    hero_tagline: "TXTDrop lives in the Windows system tray. Press Ctrl+Shift+Z and whatever is on your clipboard — text or image — is saved to a file instantly. A local AI can even name the file for you, and nothing ever leaves your PC.",
+    cta_primary: "View on GitHub",
+    cta_secondary: "Contact",
+    meta_a: "Windows 10 / 11",
+    meta_b: "Free · Runs in the system tray",
+    how_title: "How it works",
+    how_sub: "Three steps, zero friction.",
+    s1_t: "Copy anything",
+    s1_d: "Text or an image — whatever you just put on the clipboard.",
+    s2_t: "Press Ctrl+Shift+Z",
+    s2_d: "The global hotkey works anywhere, in any app.",
+    s3_t: "It's a file now",
+    s3_d: "Text becomes .txt, images become .png, saved to your chosen folder with a timestamped name.",
+    features_title: "What it does",
+    features_sub: "A small tray utility with a sharp focus — keep what you copied before it disappears.",
+    f1_t: "Instant clipboard capture",
+    f1_d: "One hotkey saves text as .txt and images as .png. An empty clipboard does nothing — no junk files.",
+    f2_t: "AI filenames, fully local",
+    f2_d: "A local Ollama model reads the text and writes a meaningful filename. No cloud, no data leaves your machine.",
+    f3_t: "Read aloud (TTS)",
+    f3_d: "Ctrl+Shift+X reads the clipboard aloud through the local SVIL TTS engine — voice, speed, and engine are configurable.",
+    f4_t: "AI memory capture",
+    f4_d: "Ctrl+Shift+M sends a snippet to TXTAIMemory so your AI assistants can recall it later. Opt-in, off by default.",
+    f5_t: "Reliable & lightweight",
+    f5_d: "RegisterHotKey-based engine survives sleep and heavy load. Dark tray menu, toast notifications, tiny footprint.",
+    f6_t: "History with dedup",
+    f6_d: "Saved-file history with duplicate cleanup (trash included), activity log window, and DB backup / restore.",
+    links_title: "Links",
+    links_sub: "Questions, bugs, or just want to say hello.",
+    link_gh: "GitHub repository",
+    link_contact: "Contact us",
+    support_title: "Support",
+    support_sub: "If this saved you some clicks, you can leave a small tip. Entirely optional — the app stays free either way.",
+    support_toss_label: "Tip via Toss",
+    support_toss_hint: "Scan the QR with the Toss app (Korea) to send a tip.",
+    svil_mission: "Singularity Visual Intelligence Lab: research and development to improve AI accessibility for people with low vision.",
+    foot_contact: "Contact", foot_blog: "Blog", foot_home: "Homepage",
+    foot_youtube: "YouTube", foot_github: "GitHub",
+  },
+  ko: {
+    _title: "TXTDrop — 단축키 하나로 저장하는 윈도우 클립보드 세이버",
+    hero_title: "단축키 한 번, 클립보드가 파일로.",
+    hero_tagline: "TXTDrop은 윈도우 트레이에 상주해요. Ctrl+Shift+Z를 누르면 클립보드의 텍스트·이미지가 즉시 파일로 저장돼요. 로컬 AI가 파일 이름까지 지어 주고, 어떤 데이터도 PC 밖으로 나가지 않아요.",
+    cta_primary: "GitHub에서 보기",
+    cta_secondary: "문의하기",
+    meta_a: "Windows 10 / 11",
+    meta_b: "무료 · 트레이 상주",
+    how_title: "이렇게 동작해요",
+    how_sub: "세 단계면 끝나요.",
+    s1_t: "무엇이든 복사",
+    s1_d: "텍스트든 이미지든, 방금 클립보드에 담은 그대로.",
+    s2_t: "Ctrl+Shift+Z 누르기",
+    s2_d: "전역 단축키라 어떤 앱에서든 동작해요.",
+    s3_t: "바로 파일 완성",
+    s3_d: "텍스트는 .txt, 이미지는 .png로 — 지정한 폴더에 타임스탬프 이름으로 저장돼요.",
+    features_title: "무엇을 하나요",
+    features_sub: "복사한 것이 사라지기 전에 붙잡아 두는, 작지만 또렷한 트레이 유틸리티예요.",
+    f1_t: "즉시 클립보드 저장",
+    f1_d: "단축키 한 번으로 텍스트는 .txt, 이미지는 .png로 저장해요. 클립보드가 비어 있으면 아무 일도 하지 않아요.",
+    f2_t: "AI 파일명, 완전 로컬",
+    f2_d: "로컬 Ollama 모델이 내용을 읽고 의미 있는 파일명을 지어요. 클라우드 없이, 데이터는 PC 밖으로 나가지 않아요.",
+    f3_t: "소리 내어 읽기 (TTS)",
+    f3_d: "Ctrl+Shift+X를 누르면 로컬 SVIL TTS 엔진이 클립보드를 낭독해요. 보이스·속도·엔진을 고를 수 있어요.",
+    f4_t: "AI 기억 캡처",
+    f4_d: "Ctrl+Shift+M으로 스니펫을 TXTAIMemory에 보내 AI 비서가 나중에 기억하게 해요. 기본은 꺼져 있어요.",
+    f5_t: "안정적이고 가벼움",
+    f5_d: "RegisterHotKey 기반 엔진이라 절전·고부하에도 단축키가 유지돼요. 다크 트레이 메뉴와 토스트 알림, 작은 리소스 사용.",
+    f6_t: "중복 정리되는 기록",
+    f6_d: "저장 기록의 중복 정리(휴지통 포함), 로그 창, DB 백업·복원까지 갖췄어요.",
+    links_title: "링크",
+    links_sub: "문의, 버그 제보, 그냥 인사도 좋습니다.",
+    link_gh: "GitHub 저장소",
+    link_contact: "문의하기",
+    support_title: "후원",
+    support_sub: "이 앱이 도움이 되셨다면 작은 후원으로 응원해 주세요. 전적으로 선택이고, 후원과 무관하게 앱은 계속 무료예요.",
+    support_toss_label: "토스로 후원",
+    support_toss_hint: "토스 앱으로 QR을 스캔하면 바로 후원할 수 있어요.",
+    svil_mission: "Singularity Visual Intelligence Lab: 저시력 시각장애인의 AI 접근성을 높이기 위한 연구와 개발을 합니다.",
+    foot_contact: "협업 문의", foot_blog: "블로그", foot_home: "홈페이지",
+    foot_youtube: "유튜브", foot_github: "GitHub",
+  },
+  ja: {
+    _title: "TXTDrop — ホットキー一発の Windows クリップボード保存ツール",
+    hero_title: "ホットキーを押すだけ。クリップボードを保存。",
+    hero_tagline: "TXTDrop は Windows のシステムトレイに常駐します。Ctrl+Shift+Z を押すと、クリップボードのテキストや画像が瞬時にファイルとして保存されます。ローカル AI がファイル名まで付けてくれて、データが PC の外に出ることはありません。",
+    cta_primary: "GitHub で見る",
+    cta_secondary: "お問い合わせ",
+    meta_a: "Windows 10 / 11",
+    meta_b: "無料・トレイ常駐",
+    how_title: "使い方",
+    how_sub: "たった 3 ステップです。",
+    s1_t: "何でもコピー",
+    s1_d: "テキストでも画像でも、クリップボードに入れたそのまま。",
+    s2_t: "Ctrl+Shift+Z を押す",
+    s2_d: "グローバルホットキーなので、どのアプリからでも動作します。",
+    s3_t: "もうファイルに",
+    s3_d: "テキストは .txt、画像は .png として、指定フォルダーにタイムスタンプ付きの名前で保存されます。",
+    features_title: "できること",
+    features_sub: "コピーしたものが消える前に確保する、小さくても頼れるトレイユーティリティです。",
+    f1_t: "瞬時にクリップボード保存",
+    f1_d: "ホットキー一発でテキストは .txt、画像は .png に。クリップボードが空なら何もしないので、ゴミファイルは作りません。",
+    f2_t: "AI ファイル名、完全ローカル",
+    f2_d: "ローカルの Ollama モデルが内容を読んで、意味のあるファイル名を付けます。クラウドなし、データは PC の外に出ません。",
+    f3_t: "読み上げ (TTS)",
+    f3_d: "Ctrl+Shift+X でローカル SVIL TTS エンジンがクリップボードを読み上げます。ボイス・速度・エンジンを選べます。",
+    f4_t: "AI メモリーキャプチャ",
+    f4_d: "Ctrl+Shift+M でスニペットを TXTAIMemory に送り、AI アシスタントが後で思い出せるように。デフォルトはオフです。",
+    f5_t: "安定・軽量",
+    f5_d: "RegisterHotKey ベースのエンジンなので、スリープや高負荷でもホットキーが維持されます。ダークトレイメニューとトースト通知付き。",
+    f6_t: "重複整理つき履歴",
+    f6_d: "保存履歴の重複整理（ごみ箱つき）、ログウィンドウ、DB のバックアップ・復元を備えています。",
+    links_title: "リンク",
+    links_sub: "お問い合わせ、バグ報告、ご挨拶もお気軽に。",
+    link_gh: "GitHub リポジトリ",
+    link_contact: "お問い合わせ",
+    support_title: "支援",
+    support_sub: "このアプリが役に立ったら、少額のチップで応援できます。もちろん任意で、支援に関係なくアプリは無料のままです。",
+    support_toss_label: "Toss で支援",
+    support_toss_hint: "Toss アプリ（韓国）で QR をスキャンして支援できます。",
+    svil_mission: "Singularity Visual Intelligence Lab: ロービジョンの方のAIアクセシビリティを高めるための研究と開発をしています。",
+    foot_contact: "お問い合わせ", foot_blog: "ブログ", foot_home: "ホームページ",
+    foot_youtube: "YouTube", foot_github: "GitHub",
+  },
+  zh: {
+    _title: "TXTDrop — 一个快捷键保存剪贴板的 Windows 工具",
+    hero_title: "按下快捷键，剪贴板即存为文件。",
+    hero_tagline: "TXTDrop 常驻 Windows 系统托盘。按下 Ctrl+Shift+Z，剪贴板中的文本或图片会立即保存为文件。本地 AI 还能帮你起文件名，任何数据都不会离开你的电脑。",
+    cta_primary: "在 GitHub 查看",
+    cta_secondary: "联系我们",
+    meta_a: "Windows 10 / 11",
+    meta_b: "免费 · 托盘常驻",
+    how_title: "工作方式",
+    how_sub: "只需三步。",
+    s1_t: "复制任何内容",
+    s1_d: "文本或图片——刚放进剪贴板的都可以。",
+    s2_t: "按 Ctrl+Shift+Z",
+    s2_d: "全局快捷键，在任何应用中都能使用。",
+    s3_t: "立刻变成文件",
+    s3_d: "文本存为 .txt，图片存为 .png，以带时间戳的文件名保存到你指定的文件夹。",
+    features_title: "它能做什么",
+    features_sub: "一个小而专注的托盘工具——在复制的内容消失之前把它留住。",
+    f1_t: "即时保存剪贴板",
+    f1_d: "一个快捷键：文本存为 .txt，图片存为 .png。剪贴板为空时什么也不做，不会产生垃圾文件。",
+    f2_t: "AI 文件名，完全本地",
+    f2_d: "本地 Ollama 模型阅读内容并起一个有意义的文件名。无云端，数据不出电脑。",
+    f3_t: "朗读 (TTS)",
+    f3_d: "按 Ctrl+Shift+X，本地 SVIL TTS 引擎朗读剪贴板内容。声音、语速、引擎均可选择。",
+    f4_t: "AI 记忆捕获",
+    f4_d: "按 Ctrl+Shift+M 将片段发送到 TXTAIMemory，让 AI 助手以后能想起来。需手动开启，默认关闭。",
+    f5_t: "稳定 · 轻量",
+    f5_d: "基于 RegisterHotKey 的引擎，休眠和高负载下快捷键依然有效。深色托盘菜单、Toast 通知、占用极小。",
+    f6_t: "带去重的历史记录",
+    f6_d: "保存历史支持重复清理（含回收站）、日志窗口，以及数据库备份/恢复。",
+    links_title: "链接",
+    links_sub: "咨询、报告问题，或只是打个招呼。",
+    link_gh: "GitHub 仓库",
+    link_contact: "联系我们",
+    support_title: "赞助",
+    support_sub: "如果这个应用帮到了你，可以留个小费支持一下。完全自愿，无论是否赞助，应用都会一直免费。",
+    support_toss_label: "用 Toss 赞助",
+    support_toss_hint: "用 Toss 应用（韩国）扫描二维码即可赞助。",
+    svil_mission: "Singularity Visual Intelligence Lab：致力于提升低视力人群 AI 无障碍体验的研究与开发。",
+    foot_contact: "合作咨询", foot_blog: "博客", foot_home: "主页",
+    foot_youtube: "YouTube", foot_github: "GitHub",
+  },
+  vi: {
+    _title: "TXTDrop — Lưu clipboard Windows bằng một phím tắt",
+    hero_title: "Nhấn một phím tắt. Clipboard được lưu.",
+    hero_tagline: "TXTDrop nằm trong khay hệ thống Windows. Nhấn Ctrl+Shift+Z và mọi thứ trong clipboard — văn bản hay hình ảnh — được lưu thành tệp ngay lập tức. AI cục bộ còn đặt tên tệp cho bạn, và không dữ liệu nào rời khỏi máy tính.",
+    cta_primary: "Xem trên GitHub",
+    cta_secondary: "Liên hệ",
+    meta_a: "Windows 10 / 11",
+    meta_b: "Miễn phí · Chạy trong khay hệ thống",
+    how_title: "Cách hoạt động",
+    how_sub: "Chỉ ba bước.",
+    s1_t: "Sao chép bất cứ gì",
+    s1_d: "Văn bản hay hình ảnh — bất cứ thứ gì bạn vừa đưa vào clipboard.",
+    s2_t: "Nhấn Ctrl+Shift+Z",
+    s2_d: "Phím tắt toàn cục, hoạt động ở mọi ứng dụng.",
+    s3_t: "Đã thành tệp",
+    s3_d: "Văn bản thành .txt, hình ảnh thành .png, lưu vào thư mục bạn chọn với tên có dấu thời gian.",
+    features_title: "Ứng dụng làm gì",
+    features_sub: "Một tiện ích khay nhỏ gọn nhưng tập trung — giữ lại những gì bạn đã sao chép trước khi nó biến mất.",
+    f1_t: "Lưu clipboard tức thì",
+    f1_d: "Một phím tắt: văn bản thành .txt, hình ảnh thành .png. Clipboard trống thì không làm gì — không tạo tệp rác.",
+    f2_t: "Tên tệp bằng AI, hoàn toàn cục bộ",
+    f2_d: "Mô hình Ollama cục bộ đọc nội dung và đặt tên tệp có ý nghĩa. Không đám mây, dữ liệu không rời khỏi máy.",
+    f3_t: "Đọc to (TTS)",
+    f3_d: "Ctrl+Shift+X đọc to clipboard qua công cụ SVIL TTS cục bộ — chọn được giọng, tốc độ và engine.",
+    f4_t: "Ghi nhớ AI",
+    f4_d: "Ctrl+Shift+M gửi đoạn trích tới TXTAIMemory để trợ lý AI nhớ lại sau này. Tùy chọn, mặc định tắt.",
+    f5_t: "Ổn định & nhẹ",
+    f5_d: "Engine dựa trên RegisterHotKey giữ phím tắt hoạt động qua chế độ ngủ và tải nặng. Menu khay tối, thông báo toast, chiếm rất ít tài nguyên.",
+    f6_t: "Lịch sử có lọc trùng",
+    f6_d: "Lịch sử tệp đã lưu với dọn trùng lặp (kèm thùng rác), cửa sổ nhật ký, và sao lưu / khôi phục cơ sở dữ liệu.",
+    links_title: "Liên kết",
+    links_sub: "Câu hỏi, báo lỗi, hoặc chỉ để chào một tiếng.",
+    link_gh: "Kho GitHub",
+    link_contact: "Liên hệ",
+    support_title: "Ủng hộ",
+    support_sub: "Nếu ứng dụng này giúp ích cho bạn, bạn có thể gửi một khoản tip nhỏ. Hoàn toàn tùy ý — ứng dụng vẫn miễn phí dù bạn có ủng hộ hay không.",
+    support_toss_label: "Ủng hộ qua Toss",
+    support_toss_hint: "Quét mã QR bằng ứng dụng Toss (Hàn Quốc) để gửi ủng hộ.",
+    svil_mission: "Singularity Visual Intelligence Lab: nghiên cứu và phát triển nhằm cải thiện khả năng tiếp cận AI cho người thị lực kém.",
+    foot_contact: "Liên hệ", foot_blog: "Blog", foot_home: "Trang chủ",
+    foot_youtube: "YouTube", foot_github: "GitHub",
+  }
+};
+
+const LANGS = ["en", "ko", "ja", "zh", "vi"];   // en = 디폴트/폴백
+
+function applyLang(code) {
+  const dict = I18N[code] || I18N.en;
+  document.documentElement.lang = code;
+  document.title = dict._title || I18N.en._title;
+  document.querySelectorAll("[data-i18n]").forEach(el => {
+    const val = dict[el.dataset.i18n] ?? I18N.en[el.dataset.i18n];   // 누락 키는 영어로 폴백
+    if (val) el.textContent = val;
+  });
+  document.querySelectorAll(".langs button").forEach(b => {
+    b.setAttribute("aria-current", String(b.dataset.lang === code));
+  });
+  try { localStorage.setItem("site-lang", code); } catch (e) {}
+}
+
+function initialLang() {
+  try { const s = localStorage.getItem("site-lang"); if (s && LANGS.includes(s)) return s; } catch (e) {}
+  for (const pref of navigator.languages || [navigator.language || "en"]) {
+    const base = String(pref).toLowerCase().split("-")[0];
+    if (LANGS.includes(base)) return base;
+  }
+  return "en";   // 디폴트 영어
+}
+
+document.querySelectorAll(".langs button").forEach(b => b.addEventListener("click", () => applyLang(b.dataset.lang)));
+applyLang(initialLang());
+</script>
+</body>
+</html>
